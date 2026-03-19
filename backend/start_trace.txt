@@ -1,0 +1,19 @@
+Traceback (most recent call last):
+  File "<string>", line 4, in <module>
+  File "E:\Agentic PM\backend\main.py", line 46, in <module>
+    from api import router, RateLimitMiddleware, LoggingMiddleware, SecurityMiddleware
+  File "E:\Agentic PM\backend\api\__init__.py", line 1, in <module>
+    from .routes import router
+  File "E:\Agentic PM\backend\api\routes.py", line 6, in <module>
+    from orchestrator import WorkflowManager
+  File "E:\Agentic PM\backend\orchestrator\__init__.py", line 1, in <module>
+    from .workflow import WorkflowManager
+  File "E:\Agentic PM\backend\orchestrator\workflow.py", line 3, in <module>
+    from agents import PlannerAgent, AnalystAgent, ArchitectAgent, TicketGeneratorAgent
+  File "E:\Agentic PM\backend\agents\__init__.py", line 5, in <module>
+    from .planner import PlannerAgent
+  File "E:\Agentic PM\backend\agents\planner.py", line 8, in <module>
+    from langchain.schema import HumanMessage
+  File "C:\Users\Anshul Rawat\AppData\Local\Programs\Python\Python311\Lib\site-packages\langchain\schema\__init__.py", line 7, in <module>
+    from langchain_core.memory import BaseMemory
+ModuleNotFoundError: No module named 'langchain_core.memory'

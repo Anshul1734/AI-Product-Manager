@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "<string>", line 10, in <module>
+  File "E:\Agentic PM\backend\orchestrator\workflow.py", line 51, in execute_workflow
+    return self._execute_langgraph_workflow(product_idea, thread_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Agentic PM\backend\orchestrator\workflow.py", line 66, in _execute_langgraph_workflow
+    raise RuntimeError(f"LangGraph workflow errors: {'; '.join(error_messages)}")
+RuntimeError: LangGraph workflow errors: planner: Error in Planner Agent: Error code: 401 - {'error': {'message': 'Incorrect API key provided: sk-test-***************ment. You can find your API key at https://platform.openai.com/account/api-keys.', 'type': 'invalid_request_error', 'code': 'invalid_api_key', 'param': None}, 'status': 401}

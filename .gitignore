@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+env/
+venv/
+.env
+.venv
+backend/.env
+frontend/.env
+*.env
+
+# MacOS
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Build
+build/
+dist/
+
+# IDEs
+.idea/
+.vscode/
+
+# Memory
+backend/memory_store.json
+backend/exports/
