@@ -9,22 +9,22 @@
       }
     },
     {
-      "src": "backend/app/main.py",
+      "src": "backend/vercel_app.py",
       "use": "@vercel/python"
     }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "/backend/app/main.py"
+      "dest": "/backend/vercel_app.py"
     },
     {
       "src": "/generate",
-      "dest": "/backend/app/main.py"
+      "dest": "/backend/vercel_app.py"
     },
     {
       "src": "/test-groq",
-      "dest": "/backend/app/main.py"
+      "dest": "/backend/vercel_app.py"
     },
     {
       "src": "/(.*)",
