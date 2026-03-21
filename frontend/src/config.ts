@@ -1,10 +1,9 @@
 /**
  * Central configuration for AI Product Manager frontend.
  */
-// Use Vercel's injected environment variable or fallback to local port
-export const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:8001";
-
-export const WS_BASE_URL = "ws://localhost:8001";
+const isProd = process.env.NODE_ENV === 'production';
+export const API_BASE_URL = process.env.REACT_APP_API_URL || (isProd ? "" : "http://localhost:8001");
+export const WS_BASE_URL = process.env.REACT_APP_WS_URL || (isProd ? "" : "ws://localhost:8001");
 
 export const API_ENDPOINTS = {
   GENERATE: `${API_BASE_URL}/api/v1/generate`,
