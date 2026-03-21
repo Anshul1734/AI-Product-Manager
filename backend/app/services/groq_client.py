@@ -12,7 +12,7 @@ load_dotenv()
 def call_llm(prompt: str, system_prompt: Optional[str] = None) -> str:
     """Make a call to Groq API."""
     api_key = os.getenv("GROQ_API_KEY")
-    model = os.getenv("GROQ_MODEL", "llama3-8b-8192")
+    model = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
     
     if not api_key or api_key == "gsk_your_actual_key_here":
         # Return demo response for testing
@@ -36,7 +36,7 @@ def call_llm(prompt: str, system_prompt: Optional[str] = None) -> str:
                 "model": model,
                 "messages": messages,
                 "temperature": 0.7,
-                "max_tokens": 2000
+                "max_tokens": 6000
             },
             timeout=30
         )

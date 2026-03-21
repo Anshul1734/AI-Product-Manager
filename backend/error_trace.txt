@@ -1,8 +1,250 @@
-Traceback (most recent call last):
-  File "<string>", line 10, in <module>
-  File "E:\Agentic PM\backend\orchestrator\workflow.py", line 51, in execute_workflow
-    return self._execute_langgraph_workflow(product_idea, thread_id)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "E:\Agentic PM\backend\orchestrator\workflow.py", line 66, in _execute_langgraph_workflow
-    raise RuntimeError(f"LangGraph workflow errors: {'; '.join(error_messages)}")
-RuntimeError: LangGraph workflow errors: planner: Error in Planner Agent: Error code: 401 - {'error': {'message': 'Incorrect API key provided: sk-test-***************ment. You can find your API key at https://platform.openai.com/account/api-keys.', 'type': 'invalid_request_error', 'code': 'invalid_api_key', 'param': None}, 'status': 401}
+{
+  "plan": {
+    "product_name": "AI Game Strategy Assistant",
+    "problem_statement": "Users struggle with making optimal game strategies, leading to frustration and a poor gaming experience. Our AI-powered assistant aims to provide personalized game strategy recommendations, enhancing user engagement and retention.",
+    "target_users": ["Casual gamers", "Professional gamers", "Esports enthusiasts"],
+    "core_goals": ["Provide accurate game strategy recommendations", "Improve user engagement and retention", "Offer a personalized gaming experience"],
+    "key_features_high_level": ["Game analysis", "AI-powered strategy recommendations", "User profiling and customization"]
+  },
+  "prd": {
+    "problem_statement": "Users struggle with making optimal game strategies, leading to frustration and a poor gaming experience.",
+    "target_users": ["Casual gamers", "Professional gamers", "Esports enthusiasts"],
+    "user_personas": [
+      {
+        "name": "Casual Gamer",
+        "description": "A busy gamer who wants to enjoy their free time without extensive planning.",
+        "pain_points": ["Difficulty in making decisions", "Frustration with repetitive games"]
+      },
+      {
+        "name": "Professional Gamer",
+        "description": "A dedicated gamer who wants to optimize their gameplay and improve performance.",
+        "pain_points": ["Need for data-driven insights", "Difficulty in adapting to new strategies"]
+      },
+      {
+        "name": "Esports Enthusiast",
+        "description": "An enthusiast who wants to stay up-to-date with the latest strategies and trends.",
+        "pain_points": ["Difficulty in staying informed", "Need for expert-level insights"]
+      }
+    ],
+    "user_stories": [
+      {
+        "title": "As a casual gamer, I want to receive personalized game strategy recommendations, so that I can enjoy my gaming sessions without extensive planning.",
+        "as_a": "Casual gamer",
+        "i_want_to": "Receive personalized game strategy recommendations",
+        "so_that": "I can enjoy my gaming sessions without extensive planning"
+      },
+      {
+        "title": "As a professional gamer, I want to access data-driven insights on game strategies, so that I can optimize my gameplay and improve performance.",
+        "as_a": "Professional gamer",
+        "i_want_to": "Access data-driven insights on game strategies",
+        "so_that": "I can optimize my gameplay and improve performance"
+      },
+      {
+        "title": "As an esports enthusiast, I want to stay up-to-date with the latest game strategies and trends, so that I can engage with the gaming community and stay informed.",
+        "as_a": "Esports enthusiast",
+        "i_want_to": "Stay up-to-date with the latest game strategies and trends",
+        "so_that": "I can engage with the gaming community and stay informed"
+      }
+    ],
+    "success_metrics": [
+      {
+        "name": "User engagement",
+        "description": "Measure the number of users engaging with the AI Game Strategy Assistant.",
+        "target": "Increase user engagement by 20% in the first 3 months"
+      },
+      {
+        "name": "Retention rate",
+        "description": "Measure the number of users who continue to use the AI Game Strategy Assistant after the initial trial period.",
+        "target": "Achieve a retention rate of 80% after 6 months"
+      },
+      {
+        "name": "User satisfaction",
+        "description": "Measure the satisfaction of users with the AI Game Strategy Assistant.",
+        "target": "Achieve a user satisfaction rate of 90% or higher"
+      }
+    ]
+  },
+  "architecture": {
+    "system_design": "Microservices-based architecture with a RESTful API",
+    "tech_stack": {
+      "frontend": "React",
+      "backend": "Node.js",
+      "database": "MongoDB",
+      "infrastructure": "AWS"
+    },
+    "architecture_components": [
+      "Game analysis service",
+      "AI-powered strategy recommendations service",
+      "User profiling and customization service"
+    ],
+    "api_endpoints": [
+      {
+        "name": "Get game analysis data",
+        "method": "GET",
+        "endpoint": "/game-analysis",
+        "description": "Retrieve game analysis data for a specific game"
+      },
+      {
+        "name": "Get AI-powered strategy recommendations",
+        "method": "GET",
+        "endpoint": "/strategy-recommendations",
+        "description": "Retrieve AI-powered strategy recommendations for a specific game"
+      },
+      {
+        "name": "Update user profile",
+        "method": "PUT",
+        "endpoint": "/user-profile",
+        "description": "Update a user's profile with new preferences and settings"
+      }
+    ],
+    "database_schema": [
+      {
+        "table_name": "games",
+        "fields": [
+          {
+            "name": "game_id",
+            "type": "String",
+            "constraints": "Primary Key"
+          },
+          {
+            "name": "game_name",
+            "type": "String",
+            "constraints": ""
+          },
+          {
+            "name": "game_description",
+            "type": "String",
+            "constraints": ""
+          }
+        ]
+      },
+      {
+        "table_name": "users",
+        "fields": [
+          {
+            "name": "user_id",
+            "type": "String",
+            "constraints": "Primary Key"
+          },
+          {
+            "name": "username",
+            "type": "String",
+            "constraints": ""
+          },
+          {
+            "name": "profile",
+            "type": "JSON",
+            "constraints": ""
+          }
+        ]
+      }
+    ]
+  },
+  "tickets": {
+    "epics": [
+      {
+        "epic_name": "Game Analysis Service",
+        "description": "Develop a game analysis service that provides data-driven insights for users.",
+        "stories": [
+          {
+            "story_title": "Implement game analysis algorithm",
+            "description": "Develop a game analysis algorithm that provides accurate and relevant data for users.",
+            "acceptance_criteria": [
+              "The algorithm returns accurate and relevant data for a specific game.",
+              "The algorithm is scalable and can handle a large volume of requests."
+            ],
+            "tasks": [
+              {
+                "title": "Research and develop game analysis algorithm",
+                "description": "Research and develop a game analysis algorithm that meets the requirements.",
+                "estimated_hours": "40"
+              },
+              {
+                "title": "Implement game analysis algorithm",
+                "description": "Implement the game analysis algorithm in the service.",
+                "estimated_hours": "60"
+              }
+            ]
+          },
+          {
+            "story_title": "Integrate game analysis service with user profiling",
+            "description": "Integrate the game analysis service with the user profiling service to provide personalized recommendations.",
+            "acceptance_criteria": [
+              "The game analysis service returns personalized recommendations for a specific user.",
+              "The recommendations are accurate and relevant based on the user's profile."
+            ],
+            "tasks": [
+              {
+                "title": "Research and develop integration",
+                "description": "Research and develop the integration between the game analysis service and the user profiling service.",
+                "estimated_hours": "30"
+              },
+              {
+                "title": "Implement integration",
+                "description": "Implement the integration between the game analysis service and the user profiling service.",
+                "estimated_hours": "50"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "epic_name": "AI-Powered Strategy Recommendations Service",
+        "description": "Develop an AI-powered strategy recommendations service that provides personalized recommendations to users.",
+        "stories": [
+          {
+            "story_title": "Implement AI algorithm",
+            "description": "Develop an AI algorithm that provides accurate and relevant recommendations for users.",
+            "acceptance_criteria": [
+              "The algorithm returns accurate and relevant recommendations for a specific user.",
+              "The algorithm is scalable and can handle a large volume of requests."
+            ],
+            "tasks": [
+              {
+                "title": "Research and develop AI algorithm",
+                "description": "Research and develop an AI algorithm that meets the requirements.",
+                "estimated_hours": "50"
+              },
+              {
+                "title": "Implement AI algorithm",
+                "description": "Implement the AI algorithm in the service.",
+                "estimated_hours": "70"
+              }
+            ]
+          },
+          {
+            "story_title": "Integrate AI service with user profiling",
+            "description": "Integrate the AI service with the user profiling service to provide personalized recommendations.",
+            "acceptance_criteria": [
+              "The AI service returns personalized recommendations for a specific user.",
+              "The recommendations are accurate and relevant based on the user's profile."
+            ],
+            "tasks": [
+              {
+                "title": "Research and develop integration",
+                "description": "Research and develop the integration between the AI service and the user profiling service.",
+                "estimated_hours": "40"
+              },
+              {
+                "title": "Implement integration",
+                "description": "Implement the integration between the AI service and the user profiling service.",
+                "estimated_hours": "60"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "features_detailed": [
+    {
+      "name": "Game Analysis",
+      "description": "Provides data-driven insights for users to make informed decisions.",
+      "rice": {
+        "reach": 5000,
+        "impact": 3,
+        "confidence": 80,
+        "effort": 8,
+        "score": 480.0
+      },
+      "justification": "

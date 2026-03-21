@@ -285,6 +285,23 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
         </div>
       )}
 
+{/* Agent Processing Steps (Optional) */}
+      {results.agent_steps && results.agent_steps.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+          <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Cpu className="w-5 h-5 text-indigo-600" />
+            AI Agent Processing Steps
+          </h4>
+          <div className="flex flex-wrap gap-2">
+            {results.agent_steps.map((step, index) => (
+              <div key={index} className="flex items-center space-x-2 bg-indigo-50 text-indigo-700 rounded-full px-4 py-1.5 text-sm font-medium border border-indigo-100">
+                <span>{index + 1}. {step}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <StatCard
@@ -380,14 +397,39 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
                   <Zap className="w-5 h-5 text-blue-600" />
                   <h4 className="font-semibold text-gray-900">Key Features</h4>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {results.plan.key_features_high_level.map((feature, index) => (
-                    <div key={index} className="flex items-center space-x-2 bg-blue-50 rounded-lg p-3">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                      <span className="text-gray-700 text-sm">{feature}</span>
-                    </div>
-                  ))}
-                </div>
+                {results.features_detailed && results.features_detailed.length > 0 ? (
+                  <div className="space-y-4">
+                    {results.features_detailed.map((feature, index) => (
+                      <div key={index} className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-2 gap-2">
+                          <h5 className="font-semibold text-blue-900">{feature.name}</h5>
+                          {feature.rice && (
+                            <div className="bg-white px-3 py-1 rounded-full text-xs font-bold text-blue-700 border border-blue-200 flex items-center gap-1 shrink-0">
+                              <Target className="w-3 h-3" />
+                              RICE: {feature.rice.score.toFixed(1)}
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-sm text-blue-800 mb-3">{feature.description}</p>
+                        {feature.justification && (
+                          <div className="bg-white bg-opacity-60 p-3 rounded text-sm text-gray-700 border border-blue-50">
+                            <span className="font-semibold text-blue-900 mb-1 block">Justification:</span>
+                            {feature.justification}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {results.plan.key_features_high_level.map((feature, index) => (
+                      <div key={index} className="flex items-center space-x-2 bg-blue-50 rounded-lg p-3">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                        <span className="text-gray-700 text-sm">{feature}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}

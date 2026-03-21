@@ -34,15 +34,18 @@ async def generate_product_plan(request: ProductIdeaRequest) -> WorkflowResponse
                 execution_time=execution_time
             )
             
+            # Prepare data payload combining result and execution metadata
+            data = result.copy()
+            data.update({
+                "generated_at": time.time(),
+                "model": "Groq API",
+                "execution_time": execution_time
+            })
+            
             return WorkflowResponse(
                 success=True,
                 message="Product plan generated successfully using Groq",
-                data={
-                    "result": result,
-                    "generated_at": time.time(),
-                    "model": "Groq API",
-                    "execution_time": execution_time
-                },
+                data=data,
                 execution_time=execution_time,
                 thread_id=request.thread_id,
                 request_id=getattr(request.state, "request_id", None)

@@ -211,6 +211,8 @@ export interface EnhancedWorkflowState {
   prd?: any;
   architecture?: any;
   tickets?: any;
+  features_detailed?: any[];
+  agent_steps?: string[];
   metadata: {
     start_time: string;
     thread_id?: string;

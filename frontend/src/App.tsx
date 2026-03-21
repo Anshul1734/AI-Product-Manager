@@ -58,6 +58,8 @@ const convertToWorkflowOutput = (enhanced: EnhancedWorkflowState): WorkflowOutpu
         stories: (e.stories || []).map((s: any) => ({...s, acceptance_criteria: s.acceptance_criteria || [], tasks: s.tasks || []}))
       }))
     },
+    features_detailed: enhanced.features_detailed,
+    agent_steps: enhanced.agent_steps,
   };
 };
 

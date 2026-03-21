@@ -87,11 +87,26 @@ export interface Tickets {
   epics: Epic[];
 }
 
+export interface FeatureDetailed {
+  name: string;
+  description: string;
+  rice: {
+    reach: number;
+    impact: number;
+    confidence: number;
+    effort: number;
+    score: number;
+  };
+  justification: string;
+}
+
 export interface WorkflowOutput {
   plan: ProductVision;
   prd: PRD;
   architecture: SystemArchitecture;
   tickets: Tickets;
+  features_detailed?: FeatureDetailed[];
+  agent_steps?: string[];
 }
 
 export interface WorkflowResponse {
