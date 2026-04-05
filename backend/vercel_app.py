@@ -55,7 +55,7 @@ def call_groq(prompt: str) -> str:
                 {"role": "user", "content": prompt},
             ],
             "temperature": 0.7,
-            "max_tokens": 6000,
+            "max_tokens": 2048,
         },
         timeout=55,  # Vercel max is 60s
     )
