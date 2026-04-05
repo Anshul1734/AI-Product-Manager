@@ -35,11 +35,14 @@ export const useWorkflow = () => {
     try {
       const response = await advancedApiService.generateProductPlan(request);
       
-      if (response.success && response.data) {
-        setResults(response.data);
-        setExecutionTime(response.data.execution_summary?.total_execution_time || null);
+      // Backend returns { success, message, data: { plan, prd, architecture, tickets, ... }, execution_time }
+      if (response && response.success && response.data) {
+        setResults(response.data as EnhancedWorkflowState);
+        setExecutionTime(response.execution_time || response.data?.execution_summary?.total_execution_time || null);
+      } else if (response && !response.success) {
+        setError(response.message || response.error || 'Failed to generate product plan');
       } else {
-        setError(response.error || 'Failed to generate product plan');
+        setError('Failed to generate product plan: unexpected response format');
       }
     } catch (err) {
       if (err instanceof TypeError && err.message === 'Failed to fetch') {

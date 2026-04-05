@@ -9,6 +9,9 @@ export interface ApiResponse<T = any> {
   error?: string;
   message?: string;
   timestamp?: string;
+  execution_time?: number;
+  thread_id?: string;
+  request_id?: string;
 }
 
 // Memory System Types
@@ -213,13 +216,13 @@ export interface EnhancedWorkflowState {
   tickets?: any;
   features_detailed?: any[];
   agent_steps?: string[];
-  metadata: {
+  metadata?: {
     start_time: string;
     thread_id?: string;
     idea: string;
     execution_id: string;
   };
-  execution_summary: {
+  execution_summary?: {
     total_execution_time: number;
     completed_at: string;
     agents_executed: string[];
