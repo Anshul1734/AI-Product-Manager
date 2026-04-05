@@ -191,8 +191,8 @@ DO NOT output any markdown, only the raw JSON object.
     except ValueError as e:
         # Fallback to basic dictionary if parsing fails
         print(f"Failed to parse Groq response: {e}")
-        with open("error_trace.txt", "w", encoding="utf-8") as f:
-            f.write(response_text)
+        # NOTE: Cannot write files on Vercel (read-only filesystem) - log only
+        print(f"Raw response was: {response_text[:500]}")
             
         return {
             "plan": {
