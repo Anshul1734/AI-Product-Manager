@@ -1,7 +1,5 @@
-"""
-Services module for AI Product Manager.
-"""
-from .product_service import generate_product_plan
+"""Application services."""
+
 from .export_service import ExportService
 
-__all__ = ['generate_product_plan', 'ExportService']
+__all__ = ["ExportService"]

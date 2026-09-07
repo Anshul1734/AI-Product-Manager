@@ -4,11 +4,17 @@ __pycache__/
 *.pyc
 env/
 venv/
+.venv/
+backend/.venv/
 .env
-.venv
-backend/.env
-frontend/.env
 *.env
+# Anything with a suffix after .env (.env.local, .env.backup-*, ...).
+# Without this, `*.env` misses them and a key-bearing file can be committed.
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
 
 # MacOS
 .DS_Store
@@ -29,3 +35,12 @@ dist/
 # Memory
 backend/memory_store.json
 backend/exports/
+
+# Runtime data (plan memory, scratch). Regenerated at runtime.
+backend/.data/
+pipeline_out.json
+quick_out.json
+sse_plan.json
+sse.log
+server.log
+run*.log

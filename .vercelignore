@@ -1,0 +1,26 @@
+# Keep the serverless bundle small and the build fast.
+
+**/__pycache__
+**/*.pyc
+**/*.pyo
+
+# Local virtualenvs and writable data
+backend/.venv
+backend/venv
+backend/env
+backend/.data
+
+# Dev-only extras: the MCP server runs locally over stdio, never in the
+# serverless function, and its `mcp` dependency is not in requirements.txt.
+backend/mcp_server
+backend/requirements-dev.txt
+backend/tests
+
+# Docs
+docs
+*.md
+!frontend/package.json
+
+# Vercel installs frontend dependencies itself
+frontend/node_modules
+frontend/build

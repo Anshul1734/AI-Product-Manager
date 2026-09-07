@@ -1,298 +1,272 @@
 """
-Export service for generating downloadable files.
+Export a generated plan to Markdown, Jira-ready CSV, or JSON.
+
+Dependency-free by design. The previous implementation pulled in reportlab for
+PDF generation -- a native dependency that was never declared in
+requirements.txt, so importing this module crashed the app at startup and forced
+a duplicate serverless entrypoint to exist. PDF output is now handled by the
+browser's own print-to-PDF against a print-styled view, which needs no server
+dependency and renders the same document the user is looking at.
 """
+from __future__ import annotations
+
+import csv
 import io
 import json
-import csv
-from typing import Dict, Any, Optional
-from datetime import datetime
-from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.lib import colors
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
-from ..core import app_logger, settings, ExportError
-from ..schemas.requests import ExportRequest
+
+def _bullets(items: Optional[List[Any]], empty: str = "_None specified._") -> str:
+    if not items:
+        return empty
+    return "\n".join(f"- {item}" for item in items)
+
+
+def _safe(value: Any, fallback: str = "") -> str:
+    return str(value).strip() if value not in (None, "") else fallback
 
 
 class ExportService:
-    """Service for handling export operations."""
-    
-    def __init__(self):
-        self.logger = app_logger
-    
-    async def export_prd_pdf(self, request: ExportRequest) -> bytes:
-        """Export PRD as PDF document."""
-        try:
-            self.logger.info(
-                f"Starting PRD PDF export",
-                thread_id=request.thread_id,
-                export_type=request.export_type
-            )
-            
-            # Generate workflow data
-            workflow_state = await self.workflow_service.execute_workflow(
-                request.idea, 
-                request.thread_id
-            )
-            
-            # Create PDF
-            pdf_buffer = io.BytesIO()
-            doc = SimpleDocTemplate(pdf_buffer, pagesize=A4, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
-            styles = getSampleStyleSheet()
-            
-            # Custom styles
-            title_style = ParagraphStyle(
-                name='CustomTitle',
-                parent=styles['Heading1'],
-                fontSize=24,
-                spaceAfter=30,
-                textColor=colors.darkblue
-            )
-            
-            heading_style = ParagraphStyle(
-                name='CustomHeading',
-                parent=styles['Heading2'],
-                fontSize=16,
-                spaceAfter=12,
-                textColor=colors.darkblue
-            )
-            
-            content = []
-            
-            # Title
-            content.append(Paragraph("Product Requirements Document", title_style))
-            content.append(Spacer(1, 12))
-            
-            # Product Info
-            plan = workflow_state.plan
-            content.append(Paragraph("Product Overview", heading_style))
-            content.append(Paragraph(f"<b>Product Name:</b> {plan.product_name}", styles['Normal']))
-            content.append(Paragraph(f"<b>Problem Statement:</b> {plan.problem_statement}", styles['Normal']))
-            content.append(Spacer(1, 12))
-            
-            # Target Users
-            content.append(Paragraph("Target Users", heading_style))
-            for user in plan.target_users:
-                content.append(Paragraph(f"• {user}", styles['Normal']))
-            content.append(Spacer(1, 12))
-            
-            # Core Goals
-            content.append(Paragraph("Core Goals", heading_style))
-            for goal in plan.core_goals:
-                content.append(Paragraph(f"• {goal}", styles['Normal']))
-            content.append(Spacer(1, 12))
-            
-            # PRD Data
-            prd = workflow_state.prd
-            content.append(Paragraph("User Personas", heading_style))
-            for persona in prd.user_personas:
-                content.append(Paragraph(f"<b>{persona.name}</b>", styles['Normal']))
-                content.append(Paragraph(persona.description, styles['Normal']))
-                content.append(Paragraph("<b>Pain Points:</b>", styles['Normal']))
-                for point in persona.pain_points:
-                    content.append(Paragraph(f"  - {point}", styles['Normal']))
-                content.append(Spacer(1, 12))
-            
-            # User Stories
-            content.append(Paragraph("User Stories", heading_style))
-            for story in prd.user_stories:
-                content.append(Paragraph(f"<b>{story.title}</b>", styles['Normal']))
-                content.append(Paragraph(
-                    f"As a <b>{story.as_a}</b>, I want to <b>{story.i_want_to}</b> so that <b>{story.so_that}</b>", 
-                    styles['Normal']
-                ))
-                content.append(Spacer(1, 12))
-            
-            # Success Metrics
-            content.append(Paragraph("Success Metrics", heading_style))
-            for metric in prd.success_metrics:
-                content.append(Paragraph(f"<b>{metric.name}</b>", styles['Normal']))
-                content.append(Paragraph(metric.description, styles['Normal']))
-                content.append(Paragraph(f"<b>Target:</b> {metric.target}", styles['Normal']))
-                content.append(Spacer(1, 12))
-            
-            # Build PDF
-            doc.build(content)
-            pdf_buffer.seek(0)
-            
-            pdf_bytes = pdf_buffer.getvalue()
-            
-            self.logger.info(
-                f"PRD PDF export completed successfully",
-                file_size=len(pdf_bytes),
-                thread_id=request.thread_id
-            )
-            
-            return pdf_bytes
-            
-        except Exception as e:
-            self.logger.error(
-                f"PRD PDF export failed",
-                error=str(e),
-                thread_id=request.thread_id
-            )
-            raise ExportError(
-                f"Failed to export PRD as PDF: {str(e)}",
-                error_code="PDF_EXPORT_FAILED",
-                details={"thread_id": request.thread_id, "error": str(e)}
-            )
-    
-    async def export_tickets_csv(self, request: ExportRequest) -> bytes:
-        """Export tickets as Jira-compatible CSV."""
-        try:
-            self.logger.info(
-                f"Starting tickets CSV export",
-                thread_id=request.thread_id,
-                export_type=request.export_type
-            )
-            
-            # Generate workflow data
-            workflow_state = await self.workflow_service.execute_workflow(
-                request.idea, 
-                request.thread_id
-            )
-            
-            # Create CSV
-            csv_buffer = io.StringIO()
-            writer = csv.writer(csv_buffer)
-            
-            # CSV Headers (Jira-compatible)
-            headers = [
-                'Issue Type', 'Summary', 'Description', 'Priority', 'Status', 
-                'Epic Link', 'Story Points', 'Assignee', 'Reporter'
+    """Renders a plan payload into downloadable documents."""
+
+    def prd_markdown(self, payload: Dict[str, Any], idea: Optional[str] = None) -> bytes:
+        plan = payload.get("plan") or {}
+        prd = payload.get("prd") or {}
+        architecture = payload.get("architecture") or {}
+        features = payload.get("features_detailed") or []
+        quality = payload.get("quality") or {}
+        citations = payload.get("citations") or []
+
+        product = _safe(plan.get("product_name"), "Untitled Product")
+        lines: List[str] = [
+            f"# {product}",
+            "",
+            "> Product Requirements Document",
+            f"> Generated {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+            "",
+        ]
+
+        if idea:
+            lines += ["## Original idea", "", f"> {idea}", ""]
+
+        lines += [
+            "## Problem",
+            "",
+            _safe(prd.get("problem_statement") or plan.get("problem_statement"), "_Not specified._"),
+            "",
+        ]
+
+        if plan.get("value_proposition"):
+            lines += ["## Value proposition", "", _safe(plan["value_proposition"]), ""]
+
+        lines += [
+            "## Target users",
+            "",
+            _bullets(prd.get("target_users") or plan.get("target_users")),
+            "",
+            "## Goals",
+            "",
+            _bullets(plan.get("core_goals")),
+            "",
+            "## Non-goals",
+            "",
+            _bullets(plan.get("non_goals") or prd.get("non_goals")),
+            "",
+        ]
+
+        if plan.get("jobs_to_be_done"):
+            lines += ["## Jobs to be done", ""]
+            for job in plan["jobs_to_be_done"]:
+                lines.append(
+                    f"- When {_safe(job.get('situation'))}, "
+                    f"I want to {_safe(job.get('motivation'))}, "
+                    f"so I can {_safe(job.get('outcome'))}."
+                )
+            lines.append("")
+
+        if prd.get("user_personas"):
+            lines += ["## Personas", ""]
+            for persona in prd["user_personas"]:
+                lines += [f"### {_safe(persona.get('name'), 'Persona')}", "", _safe(persona.get("description")), ""]
+                if persona.get("current_workaround"):
+                    lines += [f"**Today they:** {_safe(persona['current_workaround'])}", ""]
+                lines += ["**Pain points**", "", _bullets(persona.get("pain_points")), ""]
+
+        if prd.get("user_stories"):
+            lines += ["## User stories", ""]
+            for index, story in enumerate(prd["user_stories"], start=1):
+                lines += [
+                    f"### {index}. {_safe(story.get('title'), 'Story')}",
+                    "",
+                    f"As a **{_safe(story.get('as_a'))}**, I want to **{_safe(story.get('i_want_to'))}** "
+                    f"so that **{_safe(story.get('so_that'))}**.",
+                    "",
+                ]
+                if story.get("acceptance_criteria"):
+                    lines += ["**Acceptance criteria**", "", _bullets(story["acceptance_criteria"]), ""]
+
+        if features:
+            lines += [
+                "## Prioritized features (RICE)",
+                "",
+                "| # | Feature | Reach | Impact | Confidence | Effort | Score | MoSCoW |",
+                "|---|---------|-------|--------|------------|--------|-------|--------|",
             ]
-            writer.writerow(headers)
-            
-            # Write tickets
-            tickets = workflow_state.tickets
-            for epic in tickets.epics:
-                epic_name = epic.epic_name
-                
-                # Write epic
-                writer.writerow([
-                    'Epic', 
-                    epic_name, 
-                    epic.description, 
-                    'High', 
-                    'To Do', 
-                    '', 
-                    '', 
-                    '', 
-                    'AI Product Manager'
-                ])
-                
-                # Write stories
-                for story in epic.stories:
-                    writer.writerow([
-                        'Story',
-                        story.story_title,
-                        story.description,
-                        'Medium',
-                        'To Do',
+            for index, feature in enumerate(features, start=1):
+                rice = feature.get("rice") or {}
+                lines.append(
+                    f"| {index} | {_safe(feature.get('name'))} | {rice.get('reach', '')} | "
+                    f"{rice.get('impact', '')} | {rice.get('confidence', '')}% | "
+                    f"{rice.get('effort', '')} | **{rice.get('score', '')}** | "
+                    f"{_safe(feature.get('moscow'))} |"
+                )
+            lines.append("")
+            if payload.get("sequencing_rationale"):
+                lines += ["**Sequencing rationale**", "", _safe(payload["sequencing_rationale"]), ""]
+
+        if prd.get("success_metrics"):
+            lines += ["## Success metrics", "", "| Metric | Type | Target | Description |", "|---|---|---|---|"]
+            for metric in prd["success_metrics"]:
+                lines.append(
+                    f"| {_safe(metric.get('name'))} | {_safe(metric.get('metric_type'))} | "
+                    f"{_safe(metric.get('target'))} | {_safe(metric.get('description'))} |"
+                )
+            lines.append("")
+
+        if architecture:
+            lines += ["## Architecture", "", _safe(architecture.get("system_design")), ""]
+            if architecture.get("architecture_pattern"):
+                lines += [f"**Pattern:** {_safe(architecture['architecture_pattern'])}", ""]
+            if architecture.get("tech_stack"):
+                lines += ["### Tech stack", "", "| Layer | Choice |", "|---|---|"]
+                for layer, choice in architecture["tech_stack"].items():
+                    lines.append(f"| {_safe(layer)} | {_safe(choice)} |")
+                lines.append("")
+            if architecture.get("api_endpoints"):
+                lines += ["### API endpoints", "", "| Method | Path | Purpose |", "|---|---|---|"]
+                for endpoint in architecture["api_endpoints"]:
+                    lines.append(
+                        f"| `{_safe(endpoint.get('method'), 'GET')}` | `{_safe(endpoint.get('endpoint'))}` | "
+                        f"{_safe(endpoint.get('description'))} |"
+                    )
+                lines.append("")
+            if architecture.get("database_schema"):
+                lines += ["### Data model", ""]
+                for table in architecture["database_schema"]:
+                    lines += [f"**{_safe(table.get('table_name'))}**", "", "| Field | Type | Constraints |", "|---|---|---|"]
+                    for column in table.get("fields") or []:
+                        lines.append(
+                            f"| {_safe(column.get('name'))} | {_safe(column.get('type'))} | "
+                            f"{_safe(column.get('constraints'))} |"
+                        )
+                    lines.append("")
+            if architecture.get("key_decisions"):
+                lines += ["### Key decisions", ""]
+                for decision in architecture["key_decisions"]:
+                    lines += [
+                        f"**{_safe(decision.get('decision'))}**",
+                        "",
+                        f"- Rationale: {_safe(decision.get('rationale'))}",
+                    ]
+                    if decision.get("alternatives_considered"):
+                        lines.append(f"- Alternatives: {', '.join(decision['alternatives_considered'])}")
+                    if decision.get("tradeoffs"):
+                        lines.append(f"- Tradeoff accepted: {_safe(decision['tradeoffs'])}")
+                    lines.append("")
+            if architecture.get("non_functional_requirements"):
+                lines += ["### Non-functional requirements", "", _bullets(architecture["non_functional_requirements"]), ""]
+
+        if prd.get("risks"):
+            lines += ["## Risks", "", _bullets(prd["risks"]), ""]
+        if plan.get("assumptions"):
+            lines += ["## Assumptions to validate", "", _bullets(plan["assumptions"]), ""]
+        if prd.get("open_questions"):
+            lines += ["## Open questions", "", _bullets(prd["open_questions"]), ""]
+
+        if quality:
+            lines += [
+                "## Quality review",
+                "",
+                f"**Overall: {quality.get('overall', 'n/a')}/10 ({_safe(quality.get('grade'))})**",
+                "",
+                _safe(quality.get("assessment")),
+                "",
+            ]
+            if quality.get("blocking_issues"):
+                lines += ["**Blocking issues**", "", _bullets(quality["blocking_issues"]), ""]
+
+        if citations:
+            lines += ["## Sources consulted", ""]
+            for citation in citations:
+                heading = _safe(citation.get("heading"))
+                suffix = f" — {heading}" if heading else ""
+                lines.append(f"- [{_safe(citation.get('marker'))}] {_safe(citation.get('title'))}{suffix}")
+            lines.append("")
+
+        return "\n".join(lines).encode("utf-8")
+
+    def tickets_csv(self, payload: Dict[str, Any]) -> bytes:
+        """Jira-importable CSV: one row per epic, story, and task."""
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, lineterminator="\n")
+        writer.writerow(
+            ["Issue Type", "Summary", "Description", "Priority", "Status", "Epic Link", "Story Points", "Estimate (h)"]
+        )
+
+        tickets = payload.get("tickets") or {}
+        for epic in tickets.get("epics") or []:
+            epic_name = _safe(epic.get("epic_name"), "Untitled Epic")
+            writer.writerow(
+                ["Epic", epic_name, _safe(epic.get("description")), _safe(epic.get("priority"), "Medium"), "To Do", "", "", ""]
+            )
+            for story in epic.get("stories") or []:
+                criteria = story.get("acceptance_criteria") or []
+                description = _safe(story.get("description"))
+                if criteria:
+                    description = (description + "\n\nAcceptance criteria:\n" + "\n".join(f"- {c}" for c in criteria)).strip()
+                writer.writerow(
+                    [
+                        "Story",
+                        _safe(story.get("story_title"), "Untitled Story"),
+                        description,
+                        "Medium",
+                        "To Do",
                         epic_name,
-                        story.story_points or '',
-                        '',
-                        'AI Product Manager'
-                    ])
-                    
-                    # Write tasks
-                    for task in story.tasks:
-                        writer.writerow([
-                            'Task',
-                            task.title,
-                            f"Estimated time: {task.estimated_hours or 'N/A'} hours",
-                            'Low',
-                            'To Do',
+                        story.get("story_points") or "",
+                        "",
+                    ]
+                )
+                for task in story.get("tasks") or []:
+                    writer.writerow(
+                        [
+                            "Task",
+                            _safe(task.get("title"), "Untitled Task"),
+                            _safe(task.get("description")),
+                            "Low",
+                            "To Do",
                             epic_name,
-                            '',
-                            '',
-                            'AI Product Manager'
-                        ])
-            
-            csv_bytes = csv_buffer.getvalue().encode('utf-8')
-            
-            self.logger.info(
-                f"Tickets CSV export completed successfully",
-                file_size=len(csv_bytes),
-                thread_id=request.thread_id
-            )
-            
-            return csv_bytes
-            
-        except Exception as e:
-            self.logger.error(
-                f"Tickets CSV export failed",
-                error=str(e),
-                thread_id=request.thread_id
-            )
-            raise ExportError(
-                f"Failed to export tickets as CSV: {str(e)}",
-                error_code="CSV_EXPORT_FAILED",
-                details={"thread_id": request.thread_id, "error": str(e)}
-            )
-    
-    async def export_full_json(self, request: ExportRequest) -> bytes:
-        """Export complete workflow as JSON."""
-        try:
-            self.logger.info(
-                f"Starting full JSON export",
-                thread_id=request.thread_id,
-                export_type=request.export_type
-            )
-            
-            # Generate workflow data
-            workflow_state = await self.workflow_service.execute_workflow(
-                request.idea, 
-                request.thread_id
-            )
-            
-            # Add metadata
-            export_data = {
-                'export_metadata': {
-                    'timestamp': datetime.utcnow().isoformat(),
-                    'product_idea': request.idea,
-                    'thread_id': request.thread_id,
-                    'export_version': '1.0',
-                    'export_type': 'full_workflow'
-                },
-                'workflow_data': workflow_state.dict()
-            }
-            
-            json_bytes = json.dumps(export_data, indent=2, default=str).encode('utf-8')
-            
-            self.logger.info(
-                f"Full JSON export completed successfully",
-                file_size=len(json_bytes),
-                thread_id=request.thread_id
-            )
-            
-            return json_bytes
-            
-        except Exception as e:
-            self.logger.error(
-                f"Full JSON export failed",
-                error=str(e),
-                thread_id=request.thread_id
-            )
-            raise ExportError(
-                f"Failed to export full workflow as JSON: {str(e)}",
-                error_code="JSON_EXPORT_FAILED",
-                details={"thread_id": request.thread_id, "error": str(e)}
-            )
-    
-    def generate_filename(self, product_name: str, export_type: str) -> str:
-        """Generate filename for export."""
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        sanitized_name = product_name.replace(" ", "_").replace("/", "_").replace("\\", "_")
-        return f"{export_type}_{sanitized_name}_{timestamp}"
-    
-    def get_content_type(self, export_type: str) -> str:
-        """Get content type for export."""
-        content_types = {
-            'pdf': 'application/pdf',
-            'csv': 'text/csv',
-            'json': 'application/json'
+                            "",
+                            task.get("estimated_hours") or "",
+                        ]
+                    )
+
+        return buffer.getvalue().encode("utf-8")
+
+    def full_json(self, payload: Dict[str, Any], idea: Optional[str] = None) -> bytes:
+        document = {
+            "export_metadata": {
+                "exported_at": datetime.now(timezone.utc).isoformat(),
+                "export_version": "2.0",
+                "product_idea": idea,
+            },
+            "plan": payload,
         }
-        return content_types.get(export_type, 'application/octet-stream')
+        return json.dumps(document, indent=2, default=str, ensure_ascii=False).encode("utf-8")
+
+    @staticmethod
+    def filename(payload: Dict[str, Any], kind: str, extension: str) -> str:
+        product = _safe((payload.get("plan") or {}).get("product_name"), "product-plan")
+        slug = "".join(char if char.isalnum() else "-" for char in product.lower()).strip("-")[:48] or "product-plan"
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
+        return f"{slug}-{kind}-{stamp}.{extension}"

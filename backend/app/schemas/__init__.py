@@ -1,36 +1,70 @@
-"""
-Pydantic schemas for the AI Product Manager application.
-"""
+"""Pydantic schemas: API contracts and agent artifacts."""
 
-from .requests import ProductIdeaRequest, BatchRequest, ValidationRequest, ExportRequest
-from .responses import (
-    WorkflowResponse,
-    HealthResponse,
-    AnalyticsResponse,
-    BatchResponse,
-    ValidationResponse
-)
-from .workflow import (
-    WorkflowState,
+from .artifacts import (
+    PRD,
+    AgentStep,
+    ApiEndpoint,
+    ArtifactCritique,
+    Citation,
+    Critique,
+    DatabaseTable,
+    Epic,
+    FeaturePriorities,
     ProductVision,
-    ProductRequirements,
+    RiceInputs,
+    ScoredFeature,
+    Story,
+    SuccessMetric,
     SystemArchitecture,
-    DevelopmentTickets
+    Task,
+    Tickets,
+    UserPersona,
+    UserStory,
+)
+from .requests import (
+    ExportRequest,
+    KnowledgeSearchRequest,
+    ProductIdeaRequest,
+    ValidationRequest,
+)
+from .responses import (
+    BaseResponse,
+    HealthResponse,
+    KnowledgeSearchResponse,
+    ValidationResponse,
+    WorkflowResponse,
 )
 
 __all__ = [
+    # requests
     "ProductIdeaRequest",
-    "BatchRequest",
     "ValidationRequest",
+    "KnowledgeSearchRequest",
     "ExportRequest",
+    # responses
+    "BaseResponse",
     "WorkflowResponse",
-    "HealthResponse",
-    "AnalyticsResponse",
-    "BatchResponse",
     "ValidationResponse",
-    "WorkflowState",
+    "KnowledgeSearchResponse",
+    "HealthResponse",
+    # artifacts
     "ProductVision",
-    "ProductRequirements",
+    "PRD",
+    "UserPersona",
+    "UserStory",
+    "SuccessMetric",
+    "FeaturePriorities",
+    "ScoredFeature",
+    "RiceInputs",
     "SystemArchitecture",
-    "DevelopmentTickets"
+    "ApiEndpoint",
+    "DatabaseTable",
+    "Tickets",
+    "Epic",
+    "Story",
+    "Task",
+    "Critique",
+    "ArtifactCritique",
+    "AgentStep",
+    "Citation",
 ]

@@ -1,74 +1,62 @@
-"""
-Request schemas for the AI Product Manager API.
-"""
-from typing import Optional, List
-from pydantic import BaseModel, Field, validator
+"""Request schemas for the AI Product Manager API."""
+from __future__ import annotations
+
+from typing import Any, Dict, Literal, Optional
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class ProductIdeaRequest(BaseModel):
-    """Request model for product idea generation."""
-    
-    idea: str = Field(..., min_length=10, max_length=2000, description="Product idea description")
-    thread_id: Optional[str] = Field(None, description="Thread ID for conversation continuity")
-    use_legacy: Optional[bool] = Field(False, description="Use legacy workflow")
-    
-    @validator('idea')
-    def validate_idea(cls, v):
-        """Validate product idea content."""
-        if not v.strip():
-            raise ValueError("Product idea cannot be empty")
-        if len(v.strip()) < 10:
-            raise ValueError("Product idea must be at least 10 characters long")
-        return v.strip()
+    """A product idea to run through the agent pipeline."""
 
+    idea: str = Field(..., min_length=10, max_length=2000, description="The product idea")
+    thread_id: Optional[str] = Field(None, description="Reuse a thread to build on earlier runs")
+    depth: Literal["quick", "standard", "deep"] = Field(
+        default="standard",
+        description=(
+            "quick: 4 agents on the fast model, no review. "
+            "standard: 6 agents with a quality review. "
+            "deep: adds a refinement pass over artifacts that fail review."
+        ),
+    )
 
-class BatchRequest(BaseModel):
-    """Request model for batch processing."""
-    
-    ideas: List[str] = Field(..., min_items=1, max_items=10, description="List of product ideas")
-    thread_id: Optional[str] = Field(None, description="Thread ID for batch continuity")
-    use_legacy: Optional[bool] = Field(False, description="Use legacy workflow")
-    
-    @validator('ideas')
-    def validate_ideas(cls, v):
-        """Validate list of ideas."""
-        if not v:
-            raise ValueError("At least one idea is required")
-        validated_ideas = []
-        for idea in v:
-            if not idea.strip():
-                raise ValueError("Ideas cannot be empty")
-            if len(idea.strip()) < 10:
-                raise ValueError("Each idea must be at least 10 characters long")
-            validated_ideas.append(idea.strip())
-        return validated_ideas
-
-
-class ExportRequest(BaseModel):
-    """Request model for export functionality."""
-    
-    idea: str = Field(..., min_length=10, max_length=2000, description="Product idea for export")
-    thread_id: Optional[str] = Field(None, description="Thread ID for context")
-    export_type: str = Field(..., description="Export type: pdf, csv, json")
-    
-    @validator('export_type')
-    def validate_export_type(cls, v):
-        """Validate export type."""
-        allowed_types = ['pdf', 'csv', 'json']
-        if v.lower() not in allowed_types:
-            raise ValueError(f"Export type must be one of: {', '.join(allowed_types)}")
-        return v.lower()
+    @field_validator("idea")
+    @classmethod
+    def _non_blank(cls, value: str) -> str:
+        cleaned = value.strip()
+        if len(cleaned) < 10:
+            raise ValueError("Product idea must be at least 10 characters of actual content")
+        return cleaned
 
 
 class ValidationRequest(BaseModel):
-    """Request model for product idea validation."""
-    
-    idea: str = Field(..., min_length=10, max_length=2000, description="Product idea to validate")
-    thread_id: Optional[str] = Field(None, description="Thread ID for context")
+    """An idea to sanity-check before spending a full pipeline run on it."""
+
+    idea: str = Field(..., min_length=1, max_length=2000)
 
 
-class ThreadRequest(BaseModel):
-    """Request model for thread operations."""
-    
-    thread_id: str = Field(..., description="Thread ID")
-    limit: Optional[int] = Field(10, ge=1, le=100, description="Number of entries to retrieve")
+class KnowledgeSearchRequest(BaseModel):
+    """Direct query against the retrieval corpus."""
+
+    query: str = Field(..., min_length=2, max_length=500)
+    k: int = Field(default=5, ge=1, le=10)
+    domain: Optional[str] = Field(None, description="Restrict to one knowledge domain")
+
+
+class ExportRequest(BaseModel):
+    """Export a plan the client already holds.
+
+    The plan travels in the request rather than being regenerated server-side:
+    re-running the pipeline for an export would cost another full set of LLM
+    calls and could return a different document than the one on screen.
+    """
+
+    plan: Dict[str, Any] = Field(..., description="A payload previously returned by /generate")
+    idea: Optional[str] = Field(None, max_length=2000, description="Original idea, for the document header")
+
+    @field_validator("plan")
+    @classmethod
+    def _has_content(cls, value: Dict[str, Any]) -> Dict[str, Any]:
+        if not any(value.get(key) for key in ("plan", "prd", "architecture", "tickets")):
+            raise ValueError("plan must contain at least one of: plan, prd, architecture, tickets")
+        return value

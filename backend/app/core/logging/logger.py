@@ -5,7 +5,7 @@ import json
 import logging
 import time
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 from datetime import datetime
 from contextlib import contextmanager
 

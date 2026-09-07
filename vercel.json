@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "builds": [
     {
       "src": "frontend/package.json",
@@ -9,7 +9,7 @@
       }
     },
     {
-      "src": "backend/vercel_app.py",
+      "src": "backend/asgi.py",
       "use": "@vercel/python",
       "config": {
         "maxDuration": 60
@@ -17,21 +17,10 @@
     }
   ],
   "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/backend/vercel_app.py"
-    },
-    {
-      "src": "/generate",
-      "dest": "/backend/vercel_app.py"
-    },
-    {
-      "src": "/test-groq",
-      "dest": "/backend/vercel_app.py"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/frontend/$1"
-    }
+    { "src": "/api/(.*)", "dest": "/backend/asgi.py" },
+    { "src": "/docs(.*)", "dest": "/backend/asgi.py" },
+    { "src": "/redoc(.*)", "dest": "/backend/asgi.py" },
+    { "src": "/openapi.json", "dest": "/backend/asgi.py" },
+    { "src": "/(.*)", "dest": "/frontend/$1" }
   ]
 }

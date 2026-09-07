@@ -1,0 +1,10 @@
+# Development and optional extras. Not installed in the serverless bundle.
+-r requirements.txt
+
+# MCP server + client bridge. Needed to run backend/mcp_server/server.py and to
+# attach external MCP servers via the MCP_SERVERS setting.
+mcp==1.2.0
+
+# Tests
+pytest==8.3.4
+pytest-asyncio==0.25.2

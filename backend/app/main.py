@@ -1,119 +1,120 @@
 """
-Main FastAPI application for the AI Product Manager.
+FastAPI application factory.
+
+Everything the browser calls lives under `/api/v1`, so the deployment needs a
+single routing rule and there is one code path in production -- the previous
+setup had a duplicate self-contained serverless entrypoint that drifted from
+this app, which is how the two copies ended up disagreeing about response
+shapes.
 """
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+from typing import Any, Dict
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .core import (
-    settings, 
-    app_logger
+from .core.config.settings import settings
+from .core.logging.logger import app_logger
+from .rag.retriever import get_store
+from .routers import (
+    export_router,
+    health_router,
+    knowledge_router,
+    memory_router,
+    workflow_router,
 )
-from .routers import workflow_router, export_router, health_router
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Load the knowledge index during startup so the first request does not pay
+    # for it. On serverless this runs once per cold start.
+    store = get_store()
+
+    app_logger.info(
+        "Application starting",
+        version=settings.APP_VERSION,
+        llm_configured=settings.llm_configured,
+        model=settings.GROQ_MODEL,
+        corpus_chunks=store.size,
+        dense_retrieval=store.has_dense,
+        serverless=settings.is_serverless,
+    )
+    if not settings.llm_configured:
+        app_logger.warning("GROQ_API_KEY is not set; /generate will return a configuration error")
+
+    yield
+
+    app_logger.info("Application shutting down")
 
 
 def create_application() -> FastAPI:
-    """Create and configure FastAPI application."""
-    
     app = FastAPI(
         title=settings.APP_NAME,
-        description="AI-powered product planning and requirements generation",
         version=settings.APP_VERSION,
+        description=(
+            "Multi-agent product planning. A graph of specialist agents turns a product "
+            "idea into a vision, PRD, RICE-scored roadmap, architecture and backlog, "
+            "grounded in a retrieval corpus of product-management practice."
+        ),
         docs_url="/docs",
-        redoc_url="/redoc"
+        redoc_url="/redoc",
+        lifespan=lifespan,
     )
-    
-    # Add middleware
-    # Note: Exception handling middleware can be added here if needed
+
+    origins = settings.get_cors_origins()
+    wildcard = "*" in origins
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
+        allow_origins=origins,
+        # The CORS spec forbids credentials with a wildcard origin, and browsers
+        # reject the combination outright rather than degrading.
+        allow_credentials=not wildcard,
+        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
-    
-    # Add request ID middleware
-    # Note: Request ID middleware can be added here if needed
-    # app.middleware("http")(create_request_id_middleware)
-    
-    # Include routers
-    app.include_router(health_router, prefix=settings.API_V1_STR)
-    app.include_router(workflow_router, prefix=settings.API_V1_STR)
-    app.include_router(export_router, prefix=settings.API_V1_STR)
-    
-    # Add a simple test route for debugging
-    @app.get("/")
-    async def root():
-        return {"status": "ok", "message": "AI Product Manager is running"}
 
-    # Compatibility route (some clients expect /generate without /api/v1)
-    from .schemas import ProductIdeaRequest, WorkflowResponse
-    from .services.product_service import generate_product_plan
-    import time
+    prefix = settings.API_V1_STR
+    app.include_router(health_router, prefix=prefix)
+    app.include_router(workflow_router, prefix=prefix)
+    app.include_router(knowledge_router, prefix=prefix)
+    app.include_router(memory_router, prefix=prefix)
+    app.include_router(export_router, prefix=prefix)
 
-    @app.post("/generate", response_model=WorkflowResponse)
-    async def generate_no_prefix(request: ProductIdeaRequest) -> WorkflowResponse:
-        app_logger.info("Received POST /generate", idea_preview=(request.idea or "")[:200], thread_id=request.thread_id)
-        start_time = time.time()
-        try:
-            result = generate_product_plan(request.idea)
-            execution_time = time.time() - start_time
-            # Prepare data payload combining result and execution metadata
-            data = result.copy()
-            data.update({
-                "generated_at": time.time(),
-                "model": "Groq API",
-                "execution_time": execution_time
-            })
-            
-            return WorkflowResponse(
-                success=True,
-                message="Product plan generated successfully using Groq",
-                data=data,
-                execution_time=execution_time,
-                thread_id=request.thread_id
-            )
-        except Exception as e:
-            app_logger.error(f"Generate failed: {str(e)}")
-            return WorkflowResponse(
-                success=False,
-                message=f"Failed to generate product plan: {str(e)}",
-                execution_time=time.time() - start_time,
-                thread_id=request.thread_id
-            )
-    
-    # Startup event
-    @app.on_event("startup")
-    async def startup_event():
-        # Debug env loading (show only first few chars)
-        api_key = settings.GROQ_API_KEY or ""
-        if api_key:
-            app_logger.info(
-                "Groq API key loaded",
-                groq_api_key_prefix=api_key[:6] + "…",
-                groq_model=settings.GROQ_MODEL
-            )
-        else:
-            app_logger.warning(
-                "No Groq API key found - set GROQ_API_KEY environment variable"
-            )
+    @app.get("/", include_in_schema=False)
+    async def root() -> Dict[str, Any]:
+        return {
+            "name": settings.APP_NAME,
+            "version": settings.APP_VERSION,
+            "status": "ok",
+            "api": prefix,
+            "docs": "/docs",
+        }
 
-        app_logger.info(
-            f"AI Product Manager starting up",
-            version=settings.APP_VERSION,
-            debug=settings.DEBUG,
-            host=settings.HOST,
-            port=settings.PORT
+    @app.exception_handler(Exception)
+    async def unhandled(request: Request, exc: Exception) -> JSONResponse:
+        app_logger.error(
+            "Unhandled exception",
+            path=request.url.path,
+            method=request.method,
+            error_type=type(exc).__name__,
+            error=str(exc)[:500],
         )
-    
-    # Shutdown event
-    @app.on_event("shutdown")
-    async def shutdown_event():
-        app_logger.info("AI Product Manager shutting down")
-    
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": "Internal server error",
+                "error_type": type(exc).__name__,
+                # Detail only in debug: error strings can carry prompt content.
+                "detail": str(exc)[:500] if settings.DEBUG else None,
+            },
+        )
+
     return app
 
 
-# Create application instance
 app = create_application()

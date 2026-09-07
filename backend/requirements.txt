@@ -1,5 +1,12 @@
-fastapi==0.104.1
-pydantic==2.5.0
-pydantic-settings==2.1.0
-python-dotenv==1.0.0
-requests==2.32.5
+# Runtime dependencies. Deliberately small: this bundle ships to a serverless
+# function, and every megabyte is cold-start latency.
+#
+# Retrieval runs on a pure-Python BM25 implementation with optional dense
+# vectors fetched over HTTP, so there is no numpy, torch, or vector-database
+# dependency here.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.0
+python-dotenv==1.0.1
+httpx==0.28.1

@@ -1,12 +1,15 @@
-"""
-Custom exceptions for the AI Product Manager application.
+"""Application exceptions.
+
+Transport-level LLM failures live in `app.llm.errors`; agent and graph failures
+in `app.agents.base` and `app.orchestration.graph`. These cover the remaining
+application concerns.
 """
 from typing import Any, Dict, Optional
 
 
-class BaseProductManagerException(Exception):
-    """Base exception for all custom exceptions."""
-    
+class ProductManagerError(Exception):
+    """Base for application errors, carrying a code and structured details."""
+
     def __init__(self, message: str, error_code: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
         self.message = message
         self.error_code = error_code or self.__class__.__name__
@@ -14,46 +17,13 @@ class BaseProductManagerException(Exception):
         super().__init__(message)
 
 
-class ValidationError(BaseProductManagerException):
-    """Raised when input validation fails."""
-    pass
+class ConfigurationError(ProductManagerError):
+    """Configuration is missing or invalid."""
 
 
-class AgentExecutionError(BaseProductManagerException):
-    """Raised when agent execution fails."""
-    pass
+class ExportError(ProductManagerError):
+    """An export could not be rendered."""
 
 
-class AgentTimeoutError(BaseProductManagerException):
-    """Raised when agent execution times out."""
-    pass
-
-
-class AgentRetryExhaustedError(BaseProductManagerException):
-    """Raised when agent retries are exhausted."""
-    pass
-
-
-class WorkflowExecutionError(BaseProductManagerException):
-    """Raised when workflow execution fails."""
-    pass
-
-
-class MemorySystemError(BaseProductManagerException):
-    """Raised when memory system operations fail."""
-    pass
-
-
-class ExportError(BaseProductManagerException):
-    """Raised when export operations fail."""
-    pass
-
-
-class ConfigurationError(BaseProductManagerException):
-    """Raised when configuration is invalid."""
-    pass
-
-
-class RateLimitError(BaseProductManagerException):
-    """Raised when rate limit is exceeded."""
-    pass
+class MemorySystemError(ProductManagerError):
+    """Memory persistence failed."""
