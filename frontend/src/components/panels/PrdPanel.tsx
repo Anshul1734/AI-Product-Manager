@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, CircleHelp, Gauge, ScrollText, UserRound } from 'lucide-react';
+import { AlertTriangle, HelpCircle, Gauge, ScrollText, UserRound } from 'lucide-react';
 import type { PRD } from '../../types';
 import { Badge, Bullets, Card, EmptyState, SectionTitle } from '../ui/Primitives';
 
@@ -124,7 +124,7 @@ const PrdPanel: React.FC<{ prd: PRD | null }> = ({ prd }) => {
             <Card>
               <SectionTitle
                 title="Open questions"
-                icon={<CircleHelp className="h-3.5 w-3.5" />}
+                icon={<HelpCircle className="h-3.5 w-3.5" />}
                 hint="Recorded rather than guessed at."
               />
               <Bullets items={prd.open_questions} />

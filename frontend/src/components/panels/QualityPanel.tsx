@@ -1,5 +1,5 @@
 import React from 'react';
-import { OctagonAlert, RefreshCw, ShieldCheck, Wrench } from 'lucide-react';
+import { AlertOctagon, RefreshCw, ShieldCheck, Wrench } from 'lucide-react';
 import type { Quality } from '../../types';
 import { Badge, Bullets, Card, EmptyState, ScoreBar, ScoreRing, SectionTitle } from '../ui/Primitives';
 
@@ -55,7 +55,7 @@ const QualityPanel: React.FC<{ quality: Quality | null }> = ({ quality }) => {
         <Card className="!border-red-200 dark:!border-red-900/60">
           <SectionTitle
             title="Blocking issues"
-            icon={<OctagonAlert className="h-3.5 w-3.5 text-red-500" />}
+            icon={<AlertOctagon className="h-3.5 w-3.5 text-red-500" />}
             hint="Defects that make the plan unsafe to build from as written."
           />
           <Bullets items={quality.blocking_issues} />
