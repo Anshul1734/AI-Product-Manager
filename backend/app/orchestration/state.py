@@ -1,13 +1,22 @@
-"""Typed state threaded through the agent graph."""
+"""
+LangGraph state schema.
+
+The graph fans out — `analyst` and `prioritizer` both run off the vision in the
+same superstep — so every key that more than one node writes needs a reducer.
+Without one, LangGraph raises `InvalidUpdateError` on the concurrent write
+rather than silently picking a winner, which is the behaviour you want but does
+mean the trace, citation, token and error channels all have to be declared as
+accumulating.
+
+Artifact keys (`vision`, `prd`, …) are each written by exactly one node, so they
+take the default last-write-wins channel.
+"""
 from __future__ import annotations
 
-import time
-import uuid
-from dataclasses import dataclass, field
+import operator
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional, TypedDict
 
-from ..llm.client import Usage
 from ..schemas.artifacts import (
     PRD,
     AgentStep,
@@ -24,7 +33,7 @@ class Depth(str, Enum):
     """How much work to do.
 
     Trades latency for rigour, but on a token-metered account it also decides
-    whether a run fits a serverless request budget -- see DEPTH_MODEL_ROLES.
+    whether a run fits a request budget — see DEPTH_MODEL_ROLES.
     """
 
     QUICK = "quick"        # 4 agents spread across all 3 buckets; no pacing stalls
@@ -39,51 +48,90 @@ class Depth(str, Enum):
             return cls.STANDARD
 
 
-@dataclass
-class RunState:
+def merge_dicts(left: Dict[str, str], right: Dict[str, str]) -> Dict[str, str]:
+    """Reducer for the error channel: later writes win per key."""
+    return {**(left or {}), **(right or {})}
+
+
+def merge_unique(left: List[str], right: List[str]) -> List[str]:
+    """Reducer for set-like string channels, preserving first-seen order."""
+    seen = list(left or [])
+    for item in right or []:
+        if item not in seen:
+            seen.append(item)
+    return seen
+
+
+class PipelineState(TypedDict, total=False):
+    # --- inputs (written once, before the graph starts) ---
     idea: str
-    thread_id: str = field(default_factory=lambda: f"thread_{uuid.uuid4().hex[:12]}")
-    depth: Depth = Depth.STANDARD
+    thread_id: str
+    depth: str
 
-    vision: Optional[ProductVision] = None
-    prd: Optional[PRD] = None
-    priorities: Optional[FeaturePriorities] = None
-    architecture: Optional[SystemArchitecture] = None
-    tickets: Optional[Tickets] = None
-    critique: Optional[Critique] = None
+    # --- artifacts: single-writer, so no reducer needed ---
+    vision: Optional[ProductVision]
+    prd: Optional[PRD]
+    priorities: Optional[FeaturePriorities]
+    architecture: Optional[SystemArchitecture]
+    tickets: Optional[Tickets]
+    critique: Optional[Critique]
 
-    grounding: str = ""
-    steps: List[AgentStep] = field(default_factory=list)
-    citations: List[Citation] = field(default_factory=list)
-    errors: Dict[str, str] = field(default_factory=dict)
-    usage: Usage = field(default_factory=Usage)
-    refined: List[str] = field(default_factory=list)
-    retrievers_used: List[str] = field(default_factory=list)
+    # --- shared retrieval context ---
+    grounding: str
+    retrievers_used: Annotated[List[str], merge_unique]
 
-    started_at: float = field(default_factory=time.perf_counter)
+    # --- trace and metrics: written concurrently, so reducers are required ---
+    steps: Annotated[List[AgentStep], operator.add]
+    citations: Annotated[List[Citation], operator.add]
+    errors: Annotated[Dict[str, str], merge_dicts]
+    prompt_tokens: Annotated[int, operator.add]
+    completion_tokens: Annotated[int, operator.add]
+    refined: Annotated[List[str], operator.add]
 
-    @property
-    def elapsed(self) -> float:
-        return round(time.perf_counter() - self.started_at, 3)
 
-    @property
-    def review_enabled(self) -> bool:
-        return self.depth in (Depth.STANDARD, Depth.DEEP)
+def initial_state(idea: str, thread_id: str, depth: Depth) -> PipelineState:
+    """Every channel seeded, so nodes can read without KeyError guards."""
+    return {
+        "idea": idea,
+        "thread_id": thread_id,
+        "depth": depth.value,
+        "vision": None,
+        "prd": None,
+        "priorities": None,
+        "architecture": None,
+        "tickets": None,
+        "critique": None,
+        "grounding": "",
+        "retrievers_used": [],
+        "steps": [],
+        "citations": [],
+        "errors": {},
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "refined": [],
+    }
 
-    @property
-    def refine_enabled(self) -> bool:
-        return self.depth is Depth.DEEP
 
-    def record_step(self, step: AgentStep) -> None:
-        self.steps.append(step)
+def dedupe_citations(citations: List[Citation]) -> List[Citation]:
+    """Collapse repeats across agents and renumber markers sequentially.
 
-    def merge_citations(self, citations: List[Citation]) -> None:
-        """Union citations across agents, keyed by source section."""
-        existing = {f"{c.doc_id}|{c.heading}" for c in self.citations}
-        for citation in citations:
-            key = f"{citation.doc_id}|{citation.heading}"
-            if key not in existing:
-                existing.add(key)
-                self.citations.append(citation)
-        for index, citation in enumerate(self.citations, start=1):
-            citation.marker = f"S{index}"
+    Runs at assembly time rather than in the reducer: a reducer must stay
+    associative and commutative, and renumbering is neither.
+    """
+    best: Dict[str, Citation] = {}
+    for citation in citations or []:
+        key = f"{citation.doc_id}|{citation.heading}"
+        if key not in best or citation.score > best[key].score:
+            best[key] = citation
+
+    ordered = sorted(best.values(), key=lambda item: item.score, reverse=True)
+    return [
+        Citation(
+            marker=f"S{index}",
+            doc_id=item.doc_id,
+            title=item.title,
+            heading=item.heading,
+            score=item.score,
+        )
+        for index, item in enumerate(ordered, start=1)
+    ]

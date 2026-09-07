@@ -13,7 +13,7 @@ import json
 import re
 from typing import Any, AsyncIterator, Dict
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from ..core.config.settings import settings
@@ -174,7 +174,8 @@ async def describe_pipeline() -> Dict[str, Any]:
     return {
         "success": True,
         "data": {
-            "graph": pipeline.build_graph().describe(),
+            "orchestrator": "langgraph",
+            "graph": _graph_topology(pipeline),
             "agents": [
                 {
                     "name": agent.name,
@@ -207,6 +208,49 @@ async def describe_pipeline() -> Dict[str, Any]:
                 "provider": pipeline.retriever.store.embedding_provider_name,
             },
         },
+    }
+
+
+@router.get("/threads/{thread_id}")
+async def read_thread(thread_id: str) -> Dict[str, Any]:
+    """Read a run's checkpointed state.
+
+    LangGraph persists each superstep against the thread id, so a finished (or
+    interrupted) run can be inspected afterwards without re-running it.
+    """
+    graph = _pipeline().build_graph()
+    snapshot = await graph.aget_state({"configurable": {"thread_id": thread_id}})
+    if snapshot is None or not snapshot.values:
+        raise HTTPException(status_code=404, detail=f"No checkpoint for thread '{thread_id}'")
+
+    values = snapshot.values
+    return {
+        "success": True,
+        "data": {
+            "thread_id": thread_id,
+            "next_nodes": list(snapshot.next or []),
+            "depth": values.get("depth"),
+            "idea": values.get("idea"),
+            "completed_agents": [step.agent for step in values.get("steps") or []],
+            "artifacts_present": {
+                key: values.get(key) is not None
+                for key in ("vision", "prd", "priorities", "architecture", "tickets", "critique")
+            },
+            "errors": values.get("errors") or {},
+            "tokens": (values.get("prompt_tokens") or 0) + (values.get("completion_tokens") or 0),
+        },
+    }
+
+
+def _graph_topology(pipeline: ProductPlanPipeline) -> Dict[str, Any]:
+    """Nodes and edges as LangGraph itself reports them."""
+    graph = pipeline.build_graph().get_graph()
+    return {
+        "nodes": [node for node in graph.nodes if not node.startswith("__")],
+        "edges": [
+            {"from": edge.source, "to": edge.target, "conditional": bool(edge.conditional)}
+            for edge in graph.edges
+        ],
     }
 
 

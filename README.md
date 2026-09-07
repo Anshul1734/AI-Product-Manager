@@ -12,16 +12,36 @@ is validated against a schema before it reaches you.
 
 ## What actually happens when you submit an idea
 
+Orchestrated on **LangGraph** (`StateGraph`, real thread-scoped checkpointing —
+see [`app/orchestration/`](backend/app/orchestration/)):
+
 ```
-retrieve ──> planner ──┬─> analyst (PRD) ──> architect ──┐
-   (RAG)               │                                  ├─> backlog ─> critic ─> refine?
-                       └─> prioritizer (RICE) ────────────┘
+START ─> retrieve ─> planner ─┬─> analyst ──> architect ─┐
+                               │                           ├─> tickets ─> critic? ─> refine? ─> END
+                               └─> prioritizer ────────────┘
 ```
 
-`analyst` and `prioritizer` depend only on the vision, so they run concurrently.
-`critic` and `refine` are gated on the requested depth. Nodes marked
-non-critical can fail without losing the run — a failed review returns an
-unreviewed plan rather than nothing.
+`analyst` and `prioritizer` both depend only on the vision, so LangGraph runs
+them in the same superstep. The fan-in is deliberately at `architect`, not at
+`tickets`: `analyst` and `prioritizer` are each one hop from `planner`, so
+joining there is depth-balanced. Joining two branches of *unequal* depth makes
+LangGraph schedule the node once per arriving branch — the join would fire
+early, with the second input still `None`. (Caught in testing: an initial join
+at `tickets` ran that node twice, the first time before `architecture` existed.
+`tests/test_orchestration.py` asserts every node runs exactly once per pass to
+keep it that way.)
+
+`critic` and `refine` are gated on the requested depth via conditional edges.
+Non-critical nodes catch their own exceptions and return a partial state update
+instead of raising — a failed review degrades the response to an unreviewed
+plan rather than losing five artifacts that already succeeded. State channels
+written by more than one branch (the trace, citations, token counts, errors)
+declare LangGraph reducers, since a concurrent write with no reducer is a hard
+`InvalidUpdateError`.
+
+Every run is checkpointed by `thread_id` and inspectable afterwards via
+`GET /api/v1/threads/{thread_id}` — which artifacts landed, which nodes ran,
+where it left off.
 
 | Agent | Produces | Tools it can call |
 |---|---|---|
@@ -41,10 +61,13 @@ plan, so a review is not one model grading its own homework.
 
 **Real tool calling.** Agents use native function calling against a typed tool
 registry ([`app/tools/`](backend/app/tools/)). Each runs a two-phase loop: a
-research phase where tools are available, then an emit phase where they are
-withdrawn and the model must produce the target schema. The phases are
-separated because a model that has just made a successful tool call will keep
-making them where the answer belongs.
+research phase where tools are available, then an emit phase built from a
+*fresh* context with tools withdrawn. The phases are separated for the same
+reason the second one gets a fresh context rather than continuing the first: a
+model that has just made a successful tool call keeps calling tools even after
+they're withdrawn if the schema and a worked example are still sitting in its
+context, and the provider hard-rejects that once `tool_choice` is `none`.
+Findings from the research phase carry forward as plain text instead.
 
 **Schema-validated output with repair.** Every artifact is a Pydantic model
 ([`app/schemas/artifacts.py`](backend/app/schemas/artifacts.py)). On a
@@ -141,19 +164,29 @@ python -m app.rag.ingest --with-vectors
 
 ## Rate limits shape the design
 
-Groq's free tier allows **8,000 tokens per minute, per model**. That single fact
-drives several decisions worth knowing about:
+Groq's free tier allows **8,000 tokens per minute *and* 200,000 tokens per day,
+per model**. Both are real constraints in practice, not just a footnote — they
+drove several decisions:
 
 - Agents are spread across three models so a run draws on three separate
-  budgets. Assigning consecutive agents to the same model is what causes stalls,
-  so `quick` deliberately uses all three and finishes without pacing.
+  per-minute budgets. Assigning consecutive agents to the same model is what
+  causes stalls, so `quick` deliberately uses all three and finishes without
+  pacing. When one model's budget — including its daily one — is spent, the
+  client falls back to a sibling model rather than failing the run
+  ([`app/llm/client.py`](backend/app/llm/client.py)).
 - A tokens-per-minute overage comes back as **HTTP 413 with
-  `code: rate_limit_exceeded`**, not 429. Classifying on status code alone makes
-  a transient condition look like a permanently malformed request; the client
-  reads the error body instead ([`app/llm/client.py`](backend/app/llm/client.py)).
+  `code: rate_limit_exceeded`**, not 429, and per-day overages come back as
+  **429** naming a `try again in Xm` window. Classifying on status code alone
+  makes a transient condition look like a permanently malformed request; the
+  client reads the error body instead, and surfaces the daily-vs-per-minute
+  distinction to the caller rather than Groq's raw org-id-bearing message
+  ([`app/routers/workflow.py`](backend/app/routers/workflow.py)).
 - Requests are paced client-side against a sliding 60-second window per model,
   reconciled against the provider's own `x-ratelimit-remaining-tokens` header
-  ([`app/llm/ratelimit.py`](backend/app/llm/ratelimit.py)).
+  ([`app/llm/ratelimit.py`](backend/app/llm/ratelimit.py)). A provider
+  `Retry-After` is honoured but capped — taking a multi-minute exhaustion delay
+  at face value, across several retries, turns one request into a many-minute
+  hang; a prompt, clear failure serves a caller better than an open-ended wait.
 - Agents pass compact digests to each other rather than full JSON dumps
   ([`app/agents/digests.py`](backend/app/agents/digests.py)). A serialized PRD is
   ~3,000 tokens of punctuation-heavy JSON restating structure the next agent
@@ -162,11 +195,16 @@ drives several decisions worth knowing about:
 On a paid tier, raise `GROQ_TPM_LIMIT` and `MAX_TOOL_ITERATIONS` — pacing
 disappears and the agents get fuller tool loops.
 
-| Depth | Agents | Review | Typical free-tier wall clock |
+| Depth | Agents | Review | Free-tier wall clock |
 |---|---|---|---|
-| `quick` | 4 | no | ~45–90s |
-| `standard` | 6 | yes | ~2–4 min |
-| `deep` | 6 + revision | yes, and acts on it | ~3–5 min |
+| `quick` | 4 | no | ~1–4 min (no schema repairs) to ~8 min (with one) |
+| `standard` | 6 | yes | several minutes, more if a model's budget is mid-window |
+| `deep` | 6 + revision | yes, and acts on it | standard plus one refine pass |
+
+These are wide because they are real client observations, not marketing
+numbers: a single schema repair on the free 8k/min tier can itself take
+2–3 minutes once pacing is added in, and a bucket landing near-empty mid-run
+adds a full pacing wait. A paid tier removes essentially all of this.
 
 ---
 
@@ -200,7 +238,7 @@ backend/
   asgi.py                  Single ASGI entrypoint for every target
   app/
     agents/                Six agents + the two-phase tool loop, digests, JSON repair
-    orchestration/         DAG engine (concurrent layers, conditional nodes), pipeline, state
+    orchestration/         LangGraph StateGraph: fan-out/fan-in, conditional edges, checkpointing
     llm/                   Groq client, typed errors, per-model token pacing
     rag/                   Chunking, embeddings, hybrid BM25+dense store, retriever
       knowledge/           12 curated PM/architecture documents (the corpus)
