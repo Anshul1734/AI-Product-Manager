@@ -46,13 +46,16 @@ services:
       - key: PYTHON_VERSION
         value: "3.11.9"
 
-  # Static sites are their own top-level type in Render's blueprint schema, not
-  # a "web" service with a runtime. They also carry no `plan`: static hosting
-  # has no compute tier to choose, so `plan: free` is invalid here and is what
-  # produced "no such plan free for service type web" -- Render was validating
-  # against `type: web`'s plan list because that's what the field said.
-  - type: static
+  # Confirmed against Render's blueprint spec: `type` is web / pserv / worker /
+  # cron / keyvalue -- there is no top-level "static" type, which is what
+  # produced "unknown type static" on an earlier attempt. Static sites are
+  # `type: web` with the special-case `runtime: static`; `env` is a deprecated
+  # alias for `runtime`, not a separate field. The one real defect was
+  # `plan: free`: a static runtime has no compute tier to select, so any
+  # `plan` value -- "free" included -- fails validation. Omit it entirely.
+  - type: web
     name: aipm-web
+    runtime: static
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: build
