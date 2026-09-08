@@ -12,7 +12,14 @@ class AnalystAgent(BaseAgent[PRD]):
     output_model = PRD
     tool_names = ("search_pm_knowledge",)
     temperature = 0.4
-    max_tokens = 2400
+    # Richest schema in the pipeline -- up to 4 personas, up to 15 stories each
+    # carrying its own acceptance-criteria list, up to 8 metrics. A tighter cap
+    # here was cutting the response off before `success_metrics` even arrived
+    # (finish_reason == "length"), which then burns 2 repair rounds that ask the
+    # same model to fit the same content in the same too-small ceiling. Three
+    # failed 2,400-token attempts cost more tokens than one successful run at
+    # this size, so raising it is a net token saving, not a spend.
+    max_tokens = 3400
     model_role = "primary"
 
     def system_prompt(self) -> str:

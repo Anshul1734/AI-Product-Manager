@@ -51,6 +51,29 @@ def _as_text(value: Any) -> Any:
 Text = Annotated[str, BeforeValidator(_as_text)]
 
 
+def _as_list(value: Any) -> Any:
+    """Wrap a bare scalar into a single-item list.
+
+    A field asking for "acceptance criteria" is a list even when there happens
+    to be exactly one -- but a model reasons about "the acceptance criterion"
+    for a simple story and writes a bare string instead of `[...]`. Rejecting
+    that costs a full repair round to fix what one `[value]` wrap resolves for
+    free, and it was the single largest cause of failed PRD generations. A
+    genuinely absent field is left alone: `None`/missing should still fail the
+    length-minimum check that follows, since a thin list is a real quality
+    problem this coercion is not meant to paper over.
+    """
+    if value is None or isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    return [value]
+
+
+#: A list-of-Text field that tolerates the model returning a bare scalar.
+TextList = Annotated[List[Text], BeforeValidator(_as_list)]
+
+
 class Artifact(BaseModel):
     """Base for every agent output: ignore unknown keys, trim whitespace."""
 
@@ -105,12 +128,12 @@ class ProductVision(Artifact):
     product_name: str = Field(..., min_length=2, max_length=120)
     problem_statement: Text = Field(..., min_length=40, description="The problem, stated without naming a solution")
     value_proposition: Text = Field(..., min_length=20, description="One sentence on why this wins")
-    target_users: List[Text] = Field(..., min_length=1, max_length=8)
-    core_goals: List[Text] = Field(..., min_length=1, max_length=8)
-    key_features_high_level: List[Text] = Field(..., min_length=2, max_length=12)
-    non_goals: List[Text] = Field(default_factory=list, max_length=8, description="Explicitly out of scope for v1")
+    target_users: TextList = Field(..., min_length=1, max_length=8)
+    core_goals: TextList = Field(..., min_length=1, max_length=8)
+    key_features_high_level: TextList = Field(..., min_length=2, max_length=12)
+    non_goals: TextList = Field(default_factory=list, max_length=8, description="Explicitly out of scope for v1")
     jobs_to_be_done: List[JobToBeDone] = Field(default_factory=list, max_length=6)
-    assumptions: List[Text] = Field(default_factory=list, max_length=8, description="Beliefs that would invalidate the plan if wrong")
+    assumptions: TextList = Field(default_factory=list, max_length=8, description="Beliefs that would invalidate the plan if wrong")
 
 
 # --------------------------------------------------------------------------- #
@@ -121,7 +144,7 @@ class ProductVision(Artifact):
 class UserPersona(Artifact):
     name: str = Field(..., description="Role-based name, e.g. 'Priya, Ops Lead'")
     description: str
-    pain_points: List[Text] = Field(..., min_length=1, max_length=6)
+    pain_points: TextList = Field(..., min_length=1, max_length=6)
     current_workaround: Optional[str] = Field(None, description="What they do today instead")
 
 
@@ -130,7 +153,7 @@ class UserStory(Artifact):
     as_a: str
     i_want_to: str
     so_that: str
-    acceptance_criteria: List[Text] = Field(
+    acceptance_criteria: TextList = Field(
         default_factory=list,
         max_length=8,
         description="Falsifiable Given/When/Then statements",
@@ -152,13 +175,13 @@ class SuccessMetric(Artifact):
 
 class PRD(Artifact):
     problem_statement: Text = Field(..., min_length=40)
-    target_users: List[Text] = Field(..., min_length=1, max_length=8)
-    non_goals: List[Text] = Field(default_factory=list, max_length=8)
+    target_users: TextList = Field(..., min_length=1, max_length=8)
+    non_goals: TextList = Field(default_factory=list, max_length=8)
     user_personas: List[UserPersona] = Field(..., min_length=1, max_length=4)
     user_stories: List[UserStory] = Field(..., min_length=3, max_length=15)
     success_metrics: List[SuccessMetric] = Field(..., min_length=2, max_length=8)
-    risks: List[Text] = Field(default_factory=list, max_length=8)
-    open_questions: List[Text] = Field(default_factory=list, max_length=8)
+    risks: TextList = Field(default_factory=list, max_length=8)
+    open_questions: TextList = Field(default_factory=list, max_length=8)
 
 
 # --------------------------------------------------------------------------- #
@@ -239,7 +262,7 @@ class DatabaseTable(Artifact):
 class ArchitectureDecision(Artifact):
     decision: str
     rationale: str
-    alternatives_considered: List[Text] = Field(default_factory=list, max_length=4)
+    alternatives_considered: TextList = Field(default_factory=list, max_length=4)
     tradeoffs: str = ""
 
 
@@ -250,10 +273,10 @@ class SystemArchitecture(Artifact):
         description="e.g. modular monolith, microservices, serverless, event-driven",
     )
     tech_stack: Dict[str, str] = Field(..., min_length=1)
-    architecture_components: List[Text] = Field(..., min_length=2, max_length=15)
+    architecture_components: TextList = Field(..., min_length=2, max_length=15)
     api_endpoints: List[ApiEndpoint] = Field(..., min_length=2, max_length=20)
     database_schema: List[DatabaseTable] = Field(..., min_length=1, max_length=12)
-    non_functional_requirements: List[Text] = Field(default_factory=list, max_length=8)
+    non_functional_requirements: TextList = Field(default_factory=list, max_length=8)
     key_decisions: List[ArchitectureDecision] = Field(default_factory=list, max_length=6)
 
     @field_validator("tech_stack", mode="before")
@@ -291,7 +314,7 @@ class Task(Artifact):
 class Story(Artifact):
     story_title: str
     description: str = ""
-    acceptance_criteria: List[Text] = Field(..., min_length=1, max_length=8)
+    acceptance_criteria: TextList = Field(..., min_length=1, max_length=8)
     tasks: List[Task] = Field(..., min_length=1, max_length=8)
     story_points: int = Field(default=3, ge=1, le=21)
 
@@ -317,7 +340,7 @@ class Epic(Artifact):
 
 class Tickets(Artifact):
     epics: List[Epic] = Field(..., min_length=1, max_length=8)
-    delivery_sequence: List[Text] = Field(
+    delivery_sequence: TextList = Field(
         default_factory=list,
         max_length=8,
         description="Epic names in build order, walking skeleton first",
@@ -335,8 +358,8 @@ class ArtifactCritique(Artifact):
     consistency: float = Field(..., ge=0, le=10)
     specificity: float = Field(..., ge=0, le=10)
     feasibility: float = Field(..., ge=0, le=10)
-    issues: List[Text] = Field(default_factory=list, max_length=6)
-    fix_instructions: List[Text] = Field(
+    issues: TextList = Field(default_factory=list, max_length=6)
+    fix_instructions: TextList = Field(
         default_factory=list,
         max_length=6,
         description="Imperative, actionable edits for the regenerating agent",
@@ -355,7 +378,7 @@ class ArtifactCritique(Artifact):
 class Critique(Artifact):
     critiques: List[ArtifactCritique] = Field(..., min_length=1, max_length=5)
     overall_assessment: Text
-    blocking_issues: List[Text] = Field(default_factory=list, max_length=6)
+    blocking_issues: TextList = Field(default_factory=list, max_length=6)
 
     @property
     def overall_quality(self) -> float:
