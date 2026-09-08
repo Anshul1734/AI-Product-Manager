@@ -46,10 +46,13 @@ services:
       - key: PYTHON_VERSION
         value: "3.11.9"
 
-  - type: web
+  # Static sites are their own top-level type in Render's blueprint schema, not
+  # a "web" service with a runtime. They also carry no `plan`: static hosting
+  # has no compute tier to choose, so `plan: free` is invalid here and is what
+  # produced "no such plan free for service type web" -- Render was validating
+  # against `type: web`'s plan list because that's what the field said.
+  - type: static
     name: aipm-web
-    runtime: static
-    plan: free
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: build
