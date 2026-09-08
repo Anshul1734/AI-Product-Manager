@@ -34,6 +34,13 @@ services:
         value: qwen/qwen3.8-27b
       - key: GROQ_TPM_LIMIT
         value: "8000" # raise on a paid Groq tier to remove pacing
+      # Enables the dense half of hybrid retrieval (BM25 alone needs no key).
+      # The committed index already carries Jina-embedded vectors for the
+      # corpus; this key is what lets a live query get embedded the same way
+      # at request time, which dense search also requires. Without it, EMBEDDING_PROVIDER
+      # auto-resolves to none and retrieval quietly runs BM25-only.
+      - key: JINA_API_KEY
+        sync: false # set in the Render dashboard; never commit a key
       - key: LOG_FORMAT
         value: json
       - key: LOG_LEVEL
