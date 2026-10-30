@@ -66,7 +66,9 @@ async def generate(request: ProductIdeaRequest) -> WorkflowResponse:
     app_logger.info("Generate requested", depth=depth.value, thread_id=request.thread_id, idea=request.idea[:160])
 
     try:
-        payload = await _pipeline().run(request.idea, thread_id=request.thread_id, depth=depth)
+        payload = await _pipeline().run(
+            request.idea, thread_id=request.thread_id, depth=depth, workspace_id=request.workspace_id
+        )
         return WorkflowResponse(
             success=True,
             message="Product plan generated",
@@ -95,7 +97,11 @@ async def generate_stream(request: ProductIdeaRequest) -> StreamingResponse:
         async def producer() -> None:
             try:
                 payload = await _pipeline().run(
-                    request.idea, thread_id=request.thread_id, depth=depth, on_event=sink
+                    request.idea,
+                    thread_id=request.thread_id,
+                    depth=depth,
+                    on_event=sink,
+                    workspace_id=request.workspace_id,
                 )
                 await queue.put({"type": "complete", "data": payload})
             except Exception as exc:

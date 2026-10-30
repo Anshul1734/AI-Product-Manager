@@ -6,19 +6,23 @@
  * the idea has to travel in the request body.
  */
 import { API_V1 } from '../config';
+import { getWorkspaceId } from './workspace';
 import type {
   Depth,
+  DocumentLibraryStatus,
   HealthResponse,
   KnowledgeSearchResponse,
   PlanPayload,
   StreamEvent,
+  UploadedDocument,
   ValidationResult,
   WorkflowResponse,
 } from '../types';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_V1}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    // A FormData body must set its own multipart boundary header.
+    headers: init?.body instanceof FormData ? undefined : { 'Content-Type': 'application/json' },
     ...init,
   });
 
@@ -26,7 +30,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     let detail = `${response.status} ${response.statusText}`;
     try {
       const body = await response.json();
-      detail = body.detail || body.message || detail;
+      // FastAPI request-validation errors carry a list of {msg} objects.
+      detail = Array.isArray(body.detail)
+        ? body.detail.map((item: { msg?: string }) => item.msg).join('; ')
+        : body.detail || body.message || detail;
     } catch {
       /* non-JSON error body; keep the status line */
     }
@@ -46,7 +53,7 @@ export const api = {
   searchKnowledge: (query: string, k = 5, domain?: string) =>
     request<KnowledgeSearchResponse>('/knowledge/search', {
       method: 'POST',
-      body: JSON.stringify({ query, k, domain: domain || null }),
+      body: JSON.stringify({ query, k, domain: domain || null, workspace_id: getWorkspaceId() }),
     }),
 
   knowledgeDocuments: () =>
@@ -54,10 +61,32 @@ export const api = {
       '/knowledge/documents',
     ),
 
+  /** Documents this browser has uploaded, or why uploads are unavailable. */
+  listDocuments: () =>
+    request<{ success: boolean; data: DocumentLibraryStatus }>(
+      `/documents?workspace_id=${encodeURIComponent(getWorkspaceId())}`,
+    ),
+
+  uploadDocument: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('workspace_id', getWorkspaceId());
+    return request<{ success: boolean; message: string; data: { document: UploadedDocument } }>('/documents', {
+      method: 'POST',
+      body: form,
+    });
+  },
+
+  deleteDocument: (docId: string) =>
+    request<{ success: boolean }>(
+      `/documents/${encodeURIComponent(docId)}?workspace_id=${encodeURIComponent(getWorkspaceId())}`,
+      { method: 'DELETE' },
+    ),
+
   generate: (idea: string, depth: Depth, threadId?: string) =>
     request<WorkflowResponse>('/generate', {
       method: 'POST',
-      body: JSON.stringify({ idea, depth, thread_id: threadId ?? null }),
+      body: JSON.stringify({ idea, depth, thread_id: threadId ?? null, workspace_id: getWorkspaceId() }),
     }),
 
   /** Stream a run, invoking `onEvent` for each server event. */
@@ -71,7 +100,7 @@ export const api = {
     const response = await fetch(`${API_V1}/generate/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify({ idea, depth, thread_id: threadId ?? null }),
+      body: JSON.stringify({ idea, depth, thread_id: threadId ?? null, workspace_id: getWorkspaceId() }),
       signal,
     });
 

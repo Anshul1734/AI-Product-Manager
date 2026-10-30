@@ -89,6 +89,30 @@ class Settings(BaseSettings):
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
     JINA_API_KEY: Optional[str] = None
 
+    # Uploaded documents. Users add their own material (research, interview
+    # notes, specs) which is chunked, embedded with the provider above, and
+    # stored in Qdrant, scoped per workspace. Retrieval then draws on it
+    # alongside the curated corpus. Needs QDRANT_URL and an embedding key.
+    UPLOADS_ENABLED: bool = True
+    # e.g. https://<cluster>.cloud.qdrant.io:6333, or http://localhost:6333
+    QDRANT_URL: Optional[str] = None
+    QDRANT_API_KEY: Optional[str] = None
+    QDRANT_COLLECTION: str = "user_documents"
+    QDRANT_TIMEOUT_SECONDS: float = 30.0
+    UPLOAD_MAX_BYTES: int = 10 * 1024 * 1024
+    UPLOAD_MAX_CHUNKS: int = 400
+    UPLOAD_MAX_DOCUMENTS: int = 50
+    # Smaller than the curated corpus's chunks: arbitrary documents have no
+    # authored `##` structure to keep intact, and tighter passages leave room in
+    # the prompt for more than one of them.
+    UPLOAD_CHUNK_CHARS: int = 1000
+    UPLOAD_CHUNK_OVERLAP: int = 150
+    # Passages from the user's own documents added to each retrieval, on top of
+    # RAG_TOP_K curated ones, with their own character budget so the two pools
+    # never crowd each other out.
+    RAG_UPLOAD_TOP_K: int = 2
+    RAG_UPLOAD_CONTEXT_CHARS: int = 2000
+
     # Memory
     MEMORY_ENABLED: bool = True
     MEMORY_MAX_ENTRIES_PER_THREAD: int = 20
@@ -139,6 +163,23 @@ class Settings(BaseSettings):
     def llm_configured(self) -> bool:
         key = (self.GROQ_API_KEY or "").strip()
         return bool(key) and not key.startswith("gsk_your")
+
+    def uploads_unavailable_reason(self) -> Optional[str]:
+        """Why document upload is off, or None when it is ready."""
+        if not self.UPLOADS_ENABLED:
+            return "Document upload is disabled (UPLOADS_ENABLED=false)."
+        if not (self.QDRANT_URL or "").strip():
+            return "No vector database configured. Set QDRANT_URL (and QDRANT_API_KEY for Qdrant Cloud)."
+        key = {"openai": self.OPENAI_API_KEY, "jina": self.JINA_API_KEY}.get(
+            self.resolved_embedding_provider()
+        )
+        if not (key or "").strip():
+            return "No embedding provider configured. Set JINA_API_KEY or OPENAI_API_KEY."
+        return None
+
+    @property
+    def uploads_configured(self) -> bool:
+        return self.uploads_unavailable_reason() is None
 
     def resolved_embedding_provider(self) -> str:
         """Resolve "auto" against whichever provider keys are actually present."""

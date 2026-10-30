@@ -4,6 +4,7 @@ import IdeaComposer from './components/IdeaComposer';
 import AgentTrace from './components/AgentTrace';
 import ResultsView from './components/ResultsView';
 import KnowledgeExplorer from './components/KnowledgeExplorer';
+import DocumentLibrary from './components/DocumentLibrary';
 import { Badge, cx } from './components/ui/Primitives';
 import { api } from './lib/api';
 import type { Depth, HealthResponse, PlanPayload, StreamEvent, TraceEntry } from './types';
@@ -203,7 +204,10 @@ const App: React.FC = () => {
         )}
 
         {view === 'knowledge' ? (
-          <KnowledgeExplorer />
+          <div className="space-y-4">
+            <DocumentLibrary />
+            <KnowledgeExplorer />
+          </div>
         ) : (
           <div className="space-y-5">
             {!payload && (
@@ -238,6 +242,8 @@ const App: React.FC = () => {
                   disabled={!llmReady}
                   disabledReason={!llmReady ? 'Configure GROQ_API_KEY to run the pipeline.' : undefined}
                 />
+
+                <DocumentLibrary className="mt-5" />
               </section>
             )}
 

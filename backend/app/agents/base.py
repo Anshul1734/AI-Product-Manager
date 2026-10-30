@@ -30,6 +30,7 @@ from ..core.config.settings import settings
 from ..core.logging.logger import app_logger
 from ..llm.client import LLMClient, LLMResponse, Usage
 from ..llm.errors import LLMBadRequestError
+from ..rag.retriever import UPLOAD_LABEL
 from ..schemas.artifacts import Citation
 from ..tools.registry import ToolRegistry
 from .structured import extract_json_object, format_validation_errors, render_schema
@@ -332,10 +333,18 @@ class BaseAgent(ABC, Generic[T]):
         sections = [self.build_task(**inputs)]
 
         if grounding:
+            uploaded_note = (
+                "Passages labelled 'Uploaded document' are the user's own material about "
+                "this product -- research, constraints, existing systems. Treat them as facts "
+                "about this product: build on them, and where they conflict with general "
+                "practice, follow them and say so.\n\n"
+                if UPLOAD_LABEL in grounding
+                else ""
+            )
             sections.append(
                 "## Reference material from the knowledge base\n\n"
                 "Cite these with their [S#] markers where they inform a decision.\n\n"
-                f"{grounding}"
+                f"{uploaded_note}{grounding}"
             )
         if previous_attempt:
             sections.append(
@@ -392,6 +401,7 @@ def _dedupe_citations(citations: Sequence[Citation]) -> List[Citation]:
             title=item.title,
             heading=item.heading,
             score=item.score,
+            source=item.source,
         )
         for index, item in enumerate(ordered, start=1)
     ]

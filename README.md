@@ -3,10 +3,16 @@
 Turns a product problem into a plan a team can build: a product vision, a PRD, a
 RICE-scored roadmap, a system architecture, and a delivery backlog — produced by
 a graph of specialist agents, each grounded in a retrieval corpus of
-product-management practice, and reviewed by an independent critic.
+product-management practice **and in the documents you upload**, and reviewed
+by an independent critic.
 
 Every number in the output is computed rather than generated, and every artifact
 is validated against a schema before it reaches you.
+
+Upload your own material — research, interview notes, specs, constraints (PDF,
+Word, Markdown, text) — and the agents build the plan on it: your documents are
+stored in a vector database (Qdrant), retrieved alongside the curated corpus,
+treated as facts about *your* product, and cited back to you by page or section.
 
 ---
 
@@ -20,6 +26,11 @@ START ─> retrieve ─> planner ─┬─> analyst ──> architect ─┐
                                │                           ├─> tickets ─> critic? ─> refine? ─> END
                                └─> prioritizer ────────────┘
 ```
+
+Every `retrieve` — the shared one up front and the per-agent pre-grounding
+before each node — searches two pools: the curated PM corpus, and the
+documents uploaded to the caller's workspace (see
+[Your own documents](#your-own-documents)).
 
 `analyst` and `prioritizer` both depend only on the vision, so LangGraph runs
 them in the same superstep. The fan-in is deliberately at `architect`, not at
@@ -92,6 +103,25 @@ calibration between them, which is what makes it degrade gracefully when one
 retriever is unavailable. Retrieved passages carry `[S#]` markers, and the
 citations survive into the API response and the UI.
 
+**Your own documents, in a vector database.** Uploads (PDF, DOCX, Markdown,
+TXT, CSV, JSON) are parsed with provenance — a PDF passage cites its page, a
+Word or markdown passage its heading — chunked, embedded, and stored in
+[Qdrant](https://qdrant.tech) ([`app/rag/uploads.py`](backend/app/rag/uploads.py)).
+Retrieval over them is hybrid too: dense search runs in Qdrant, BM25 runs over a
+per-workspace cache. Each retrieval draws from both pools with **separate
+passage counts and character budgets**, rather than one merged ranking: the
+corpus says how to do product work well, the uploads say what is true about
+*this* product, and a plan needs both, so neither may crowd the other out. The
+uploads are searched with the idea itself rather than the corpus's
+"best practice for…" phrasing, and agents are told that uploaded passages are
+facts about the product that outrank general practice when they conflict.
+
+Documents are scoped to a per-browser workspace id, so one visitor's uploads
+never ground another's plans. There are no accounts, so the id is a bearer
+token, not access control. Qdrant is called over its REST API with `httpx`
+rather than through `qdrant-client`, which costs ~110 MB of resident memory on
+import — a fifth of a free-tier instance.
+
 **Bounded reflection.** At `deep` depth the critic's per-artifact scores drive a
 single refinement pass: only artifacts below the threshold are regenerated, and
 only with that critic's imperative fix instructions. One pass, not a loop —
@@ -160,6 +190,65 @@ the dense half of the hybrid, set `OPENAI_API_KEY` or `JINA_API_KEY` in
 python -m app.rag.ingest --with-vectors
 ```
 
+### Optional: enable document upload
+
+Uploads need a Qdrant instance and an embedding key (`JINA_API_KEY` or
+`OPENAI_API_KEY`). Without them everything else works and the UI says why
+upload is off.
+
+```bash
+# Either a free cluster at https://cloud.qdrant.io (copy its URL + API key) ...
+# ... or a local instance:
+docker run -p 6333:6333 qdrant/qdrant
+```
+
+Then in `backend/.env`:
+
+```
+QDRANT_URL=http://localhost:6333        # or your https://….cloud.qdrant.io:6333
+QDRANT_API_KEY=                         # required for Qdrant Cloud
+JINA_API_KEY=jina_...
+```
+
+The collection and its payload indexes are created on first upload. Test the
+whole flow offline (fake Qdrant, fake embeddings):
+`cd backend && PYTHONPATH=. python tests/test_uploads.py`.
+
+---
+
+## Your own documents
+
+In the UI, drop files into **Your documents** (on the Plan and Knowledge pages).
+Each one is parsed, split into passages, embedded and stored; from then on every
+plan you generate and every knowledge search draws on it, and the **Sources**
+tab marks those passages **Your document**.
+
+| | |
+|---|---|
+| Formats | `.pdf` `.docx` `.md` `.txt` `.csv` `.tsv` `.json` `.rst` `.log` |
+| Limits (configurable) | 10 MB per file, 50 documents per workspace, 400 passages per document |
+| Provenance | PDF passages cite their page, Word/markdown passages their heading |
+| Not supported | Scanned PDFs without a text layer (no OCR) — rejected with a message |
+
+**Workspaces.** The browser generates a random workspace id on first visit and
+keeps it in `localStorage`; documents are stored and retrieved under that id
+only. There are no accounts, so the id is a bearer token rather than access
+control, and clearing site data starts an empty library.
+
+**API.** The same flow without the UI (`workspace_id`: 6–64 chars of
+`A-Z a-z 0-9 _ -`):
+
+```bash
+# upload
+curl -F "workspace_id=ws_demo123" -F "file=@research.pdf" http://localhost:8001/api/v1/documents
+# list / delete
+curl "http://localhost:8001/api/v1/documents?workspace_id=ws_demo123"
+curl -X DELETE "http://localhost:8001/api/v1/documents/<doc_id>?workspace_id=ws_demo123"
+# ground a plan or a search in them: add the same workspace_id
+curl -X POST http://localhost:8001/api/v1/generate -H "Content-Type: application/json" \
+     -d '{"idea": "…", "depth": "quick", "workspace_id": "ws_demo123"}'
+```
+
 ---
 
 ## Rate limits shape the design
@@ -217,9 +306,34 @@ A [`render.yaml`](render.yaml) blueprint deploys both services on Render's free
 tier:
 
 1. Push the repo, then in Render pick **New → Blueprint** and select it.
-2. Set `GROQ_API_KEY` on `aipm-api`.
+2. Set the secrets below on `aipm-api` (Render dashboard → service →
+   **Environment**). Values marked `sync: false` in the blueprint are never
+   committed.
 3. Set `REACT_APP_API_URL` on `aipm-web` to the API's URL, and `CORS_ORIGINS` on
    `aipm-api` to the web service's origin.
+
+| `aipm-api` variable | Needed for | Where to get it |
+|---|---|---|
+| `GROQ_API_KEY` | everything | [console.groq.com/keys](https://console.groq.com/keys) |
+| `JINA_API_KEY` | dense retrieval **and** document upload (embeds them) | [jina.ai/embeddings](https://jina.ai/embeddings/) |
+| `QDRANT_URL` | document upload | Qdrant Cloud cluster URL, e.g. `https://xxxx.cloud.qdrant.io:6333` |
+| `QDRANT_API_KEY` | document upload | Qdrant Cloud → cluster → API Keys |
+| `QDRANT_COLLECTION` | document upload | set by the blueprint to `user_documents` |
+| `CORS_ORIGINS` | the browser calling the API | your frontend's origin |
+
+**Uploads need a hosted vector DB.** Render's free disk is wiped on every
+restart and spin-down, so documents must live outside the instance — a free
+[Qdrant Cloud](https://cloud.qdrant.io) cluster is enough. Use a different
+`QDRANT_COLLECTION` locally (the `.env.example` suggests `user_documents_dev`)
+so development uploads never mix with production. Without the Qdrant variables
+the API still runs; the UI simply explains that upload is unavailable, and
+`GET /api/v1/health` reports why under `components.uploads`.
+
+**Adding uploads to an existing deployment:** a blueprint only prompts for
+`sync: false` values when it is first created, so add `QDRANT_URL` and
+`QDRANT_API_KEY` by hand in the `aipm-api` Environment tab, then redeploy. The
+new Python dependencies (`python-multipart`, `pypdf`, `python-docx`) install
+from `requirements.txt` on that build. The frontend needs no new variables.
 
 Render's free tier sleeps after 15 minutes idle, so the first request after a
 pause pays a cold start.
@@ -227,7 +341,8 @@ pause pays a cold start.
 Deploying the frontend to Vercel instead works fine — it is a static build.
 [`vercel.json`](vercel.json) is configured for that, with the API routed to
 `backend/asgi.py`; just note the 60-second ceiling applies to `standard` and
-`deep` runs there.
+`deep` runs there, and Vercel functions cap request bodies at about 4.5 MB,
+which limits upload size if the API runs there.
 
 ---
 
@@ -241,16 +356,19 @@ backend/
     orchestration/         LangGraph StateGraph: fan-out/fan-in, conditional edges, checkpointing
     llm/                   Groq client, typed errors, per-model token pacing
     rag/                   Chunking, embeddings, hybrid BM25+dense store, retriever
+      uploads.py           User documents: parse, chunk, embed, Qdrant, workspace-scoped retrieval
+      parsers.py           PDF / DOCX / markdown / text extraction with page/heading provenance
       knowledge/           12 curated PM/architecture documents (the corpus)
       index/               Committed index artifact — no build step at deploy
     tools/                 Tool registry, RAG/scoring/memory tools, MCP client bridge
     schemas/               Artifact models and API contracts
     memory/                BM25 recall over past plans
-    routers/               generate, generate/stream (SSE), knowledge, memory, export, health
+    routers/               generate, generate/stream (SSE), knowledge, documents, memory, export, health
   mcp_server/              MCP server exposing the pipeline (see its README)
 frontend/src/
-  components/              Composer, live agent trace, tabbed results, knowledge explorer
-  lib/api.ts               Typed client incl. SSE reader
+  components/              Composer, live agent trace, tabbed results, knowledge explorer, document library
+  lib/api.ts               Typed client incl. SSE reader and multipart upload
+  lib/workspace.ts         Per-browser workspace id that scopes uploaded documents
 ```
 
 ---

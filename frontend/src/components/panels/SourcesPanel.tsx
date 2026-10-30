@@ -114,7 +114,11 @@ const SourcesPanel: React.FC<{ payload: PlanPayload }> = ({ payload }) => {
         <SectionTitle
           title={`Knowledge sources (${citations.length})`}
           icon={<Library className="h-3.5 w-3.5" />}
-          hint="Passages retrieved from the product-management corpus and supplied to the agents as grounding."
+          hint={
+            retrieval.uploaded_sources_cited
+              ? `Passages supplied to the agents as grounding — ${retrieval.uploaded_sources_cited} from your own documents, the rest from the product-management corpus.`
+              : 'Passages retrieved from the product-management corpus and supplied to the agents as grounding.'
+          }
         />
         {citations.length ? (
           <ul className="divide-y divide-zinc-100 dark:divide-zinc-800/70">
@@ -124,7 +128,10 @@ const SourcesPanel: React.FC<{ payload: PlanPayload }> = ({ payload }) => {
                   {citation.marker}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{citation.title}</div>
+                  <div className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-zinc-800 dark:text-zinc-200">
+                    {citation.title}
+                    {citation.source === 'upload' && <Badge tone="success">Your document</Badge>}
+                  </div>
                   {citation.heading && (
                     <div className="text-xs text-zinc-500 dark:text-zinc-400">{citation.heading}</div>
                   )}

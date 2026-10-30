@@ -1,8 +1,9 @@
 # Runtime dependencies.
 #
 # Retrieval runs on a pure-Python BM25 implementation with optional dense
-# vectors fetched over HTTP, so there is no numpy, torch, or vector-database
-# dependency here.
+# vectors fetched over HTTP. Uploaded documents live in Qdrant, reached over its
+# REST API with httpx, so there is no numpy, torch, or vector-database client
+# here either.
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 pydantic==2.10.4
@@ -14,3 +15,9 @@ httpx==0.28.1
 # edges, and thread-scoped checkpointing. Pulls langchain-core and
 # langgraph-checkpoint.
 langgraph==1.2.11
+
+# Document upload: multipart form parsing, and text extraction from PDF and
+# Word files (both imported lazily, only while an upload is processed).
+python-multipart==0.0.32
+pypdf==6.21.4
+python-docx==1.2.0

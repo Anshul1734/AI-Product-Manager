@@ -34,7 +34,9 @@ async def _search(args: Dict[str, Any], ctx: ToolContext) -> ToolResult:
     k = args.get("k")
     limit = int(k) if isinstance(k, (int, float)) and 1 <= float(k) <= 8 else settings.RAG_TOP_K
 
-    result = await ctx.retriever.retrieve(query, k=limit, domains=domains)
+    result = await ctx.retriever.retrieve(
+        query, k=limit, domains=domains, workspace_id=ctx.workspace_id
+    )
     if result.is_empty:
         return ToolResult(content=f"No knowledge-base passages matched '{query}'.")
 
@@ -58,7 +60,9 @@ search_pm_knowledge = Tool(
         "architecture patterns, API design, data modelling, estimation). Use it "
         "before making a framework, scoring, or architecture decision so the "
         "output follows established practice instead of guesswork. Returns "
-        "passages with [S#] citation markers."
+        "passages with [S#] citation markers. Also searches any documents the "
+        "user uploaded (research, specs, constraints), returned first and "
+        "labelled 'Uploaded document' -- facts about this specific product."
     ),
     parameters={
         "type": "object",

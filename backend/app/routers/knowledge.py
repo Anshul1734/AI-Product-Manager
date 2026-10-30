@@ -49,6 +49,8 @@ async def search(request: KnowledgeSearchRequest) -> KnowledgeSearchResponse:
         request.query,
         k=request.k,
         domains=[request.domain] if request.domain else None,
+        workspace_id=request.workspace_id,
+        upload_k=request.k,
     )
 
     return KnowledgeSearchResponse(
@@ -64,6 +66,7 @@ async def search(request: KnowledgeSearchRequest) -> KnowledgeSearchResponse:
                 "heading": scored.chunk.heading,
                 "domain": scored.chunk.domain,
                 "authority": scored.chunk.authority,
+                "source": scored.chunk.source,
                 "text": scored.chunk.text,
                 "fused_score": round(scored.score, 5),
                 "matched_by": scored.retrievers,

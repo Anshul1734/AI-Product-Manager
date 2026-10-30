@@ -5,12 +5,20 @@ from typing import Any, Dict, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+#: Opaque per-browser id scoping uploaded documents. See app/rag/uploads.py.
+WORKSPACE_ID_PATTERN = r"^[A-Za-z0-9_-]{6,64}$"
+
 
 class ProductIdeaRequest(BaseModel):
     """A product idea to run through the agent pipeline."""
 
     idea: str = Field(..., min_length=10, max_length=2000, description="The product idea")
     thread_id: Optional[str] = Field(None, description="Reuse a thread to build on earlier runs")
+    workspace_id: Optional[str] = Field(
+        None,
+        pattern=WORKSPACE_ID_PATTERN,
+        description="Ground the run in documents uploaded to this workspace",
+    )
     depth: Literal["quick", "standard", "deep"] = Field(
         default="standard",
         description=(
@@ -41,6 +49,11 @@ class KnowledgeSearchRequest(BaseModel):
     query: str = Field(..., min_length=2, max_length=500)
     k: int = Field(default=5, ge=1, le=10)
     domain: Optional[str] = Field(None, description="Restrict to one knowledge domain")
+    workspace_id: Optional[str] = Field(
+        None,
+        pattern=WORKSPACE_ID_PATTERN,
+        description="Also search documents uploaded to this workspace",
+    )
 
 
 class ExportRequest(BaseModel):

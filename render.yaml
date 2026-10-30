@@ -41,6 +41,15 @@ services:
       # auto-resolves to none and retrieval quietly runs BM25-only.
       - key: JINA_API_KEY
         sync: false # set in the Render dashboard; never commit a key
+      # Uploaded documents live in Qdrant (Render's free disk is wiped on every
+      # restart, so a hosted vector DB is required). Free cluster at
+      # cloud.qdrant.io. Uploads also need JINA_API_KEY above, which embeds them.
+      - key: QDRANT_URL
+        sync: false # e.g. https://xxxx.cloud.qdrant.io:6333
+      - key: QDRANT_API_KEY
+        sync: false # set in the Render dashboard; never commit a key
+      - key: QDRANT_COLLECTION
+        value: user_documents
       - key: LOG_FORMAT
         value: json
       - key: LOG_LEVEL

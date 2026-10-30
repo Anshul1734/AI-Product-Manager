@@ -135,12 +135,16 @@ export interface Tickets {
   delivery_sequence: string[];
 }
 
+/** Where a passage came from: the curated corpus, or the user's own upload. */
+export type SourceKind = 'corpus' | 'upload';
+
 export interface Citation {
   marker: string;
   doc_id: string;
   title: string;
   heading: string;
   score: number;
+  source?: SourceKind;
 }
 
 export interface AgentStep {
@@ -192,6 +196,7 @@ export interface RunMeta {
     corpus_chunks: number;
     dense: boolean;
     sources_cited: number;
+    uploaded_sources_cited?: number;
   };
   refined_artifacts: string[];
   agents_run: string[];
@@ -249,6 +254,7 @@ export interface KnowledgeResult {
   heading: string;
   domain: string;
   authority: string;
+  source?: SourceKind;
   text: string;
   fused_score: number;
   matched_by: string[];
@@ -279,7 +285,29 @@ export interface HealthResponse {
       detail?: string | null;
     };
     memory: { ready: boolean; stats?: Record<string, unknown> };
+    uploads?: { ready: boolean; vector_db: string; collection: string; detail?: string | null };
   };
+}
+
+export interface UploadedDocument {
+  doc_id: string;
+  title: string;
+  filename: string;
+  uploaded_at: string;
+  size_bytes: number;
+  doc_chars: number;
+  chunk_count: number;
+  duplicate?: boolean;
+}
+
+export interface DocumentLibraryStatus {
+  enabled: boolean;
+  /** Why uploads are unavailable, when they are. */
+  reason: string | null;
+  documents: UploadedDocument[];
+  max_bytes: number;
+  max_documents: number;
+  supported_extensions: string[];
 }
 
 /** One row in the live agent trace, assembled from stream events. */

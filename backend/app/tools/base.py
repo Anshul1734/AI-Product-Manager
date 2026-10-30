@@ -33,6 +33,8 @@ class ToolContext:
     retriever: Optional[Any] = None
     memory: Optional[Any] = None
     thread_id: Optional[str] = None
+    #: Scopes knowledge search to this workspace's uploaded documents.
+    workspace_id: Optional[str] = None
 
 
 @dataclass

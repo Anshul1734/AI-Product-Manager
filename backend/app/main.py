@@ -20,6 +20,7 @@ from .core.config.settings import settings
 from .core.logging.logger import app_logger
 from .rag.retriever import get_store
 from .routers import (
+    documents_router,
     export_router,
     health_router,
     knowledge_router,
@@ -41,6 +42,7 @@ async def lifespan(_app: FastAPI):
         model=settings.GROQ_MODEL,
         corpus_chunks=store.size,
         dense_retrieval=store.has_dense,
+        uploads=settings.uploads_unavailable_reason() or "ready",
         serverless=settings.is_serverless,
     )
     if not settings.llm_configured:
@@ -81,6 +83,7 @@ def create_application() -> FastAPI:
     app.include_router(health_router, prefix=prefix)
     app.include_router(workflow_router, prefix=prefix)
     app.include_router(knowledge_router, prefix=prefix)
+    app.include_router(documents_router, prefix=prefix)
     app.include_router(memory_router, prefix=prefix)
     app.include_router(export_router, prefix=prefix)
 

@@ -402,6 +402,8 @@ class Citation(Artifact):
     title: str
     heading: str = ""
     score: float = 0.0
+    #: "corpus" for the curated knowledge base, "upload" for the user's own documents.
+    source: str = "corpus"
 
 
 class AgentStep(Artifact):

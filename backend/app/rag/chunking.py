@@ -9,6 +9,10 @@ document context even when a section is read in isolation.
 Frontmatter is parsed by hand rather than with PyYAML: the format is a fixed,
 tiny subset (scalars plus inline lists) and the serverless bundle stays smaller
 without the dependency.
+
+User-uploaded documents go through `chunk_sections` instead: they have no
+authored structure to rely on, so they are split on the most natural boundary
+that fits (paragraph, line, sentence, word) into smaller, overlapping passages.
 """
 from __future__ import annotations
 
@@ -24,6 +28,10 @@ from typing import Any, Dict, List
 MAX_CHUNK_CHARS = 2400
 CHUNK_OVERLAP_CHARS = 200
 MIN_CHUNK_CHARS = 80
+# Uploads keep much shorter passages than the curated corpus: a slide or a
+# short PDF page can carry one decisive fact, and the user chose to supply it.
+# Only fragments too small to state anything ("Thank you", a page number) go.
+MIN_UPLOAD_PASSAGE_CHARS = 20
 
 _FRONTMATTER = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 _HEADING = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
@@ -39,6 +47,8 @@ class Chunk:
     domain: str = "general"
     authority: str = "practice"
     tags: List[str] = field(default_factory=list)
+    #: "corpus" for the curated knowledge base, "upload" for a user's document.
+    source: str = "corpus"
 
     @property
     def embedding_text(self) -> str:
@@ -55,6 +65,7 @@ class Chunk:
             "domain": self.domain,
             "authority": self.authority,
             "tags": self.tags,
+            "source": self.source,
         }
 
     @classmethod
@@ -68,6 +79,7 @@ class Chunk:
             domain=data.get("domain", "general"),
             authority=data.get("authority", "practice"),
             tags=list(data.get("tags") or []),
+            source=data.get("source") or "corpus",
         )
 
 
@@ -134,23 +146,8 @@ def chunk_markdown(raw: str, *, fallback_doc_id: str) -> List[Chunk]:
     if isinstance(tags, str):
         tags = [tag.strip() for tag in tags.split(",") if tag.strip()]
 
-    headings = list(_HEADING.finditer(body))
-    sections: List[tuple[str, str]] = []
-
-    if not headings:
-        sections.append(("Overview", body.strip()))
-    else:
-        preamble = body[: headings[0].start()].strip()
-        # Drop the leading `# Title` line; it duplicates the frontmatter title.
-        preamble = re.sub(r"^#\s+.*$", "", preamble, count=1, flags=re.MULTILINE).strip()
-        if len(preamble) >= MIN_CHUNK_CHARS:
-            sections.append(("Overview", preamble))
-        for index, match in enumerate(headings):
-            end = headings[index + 1].start() if index + 1 < len(headings) else len(body)
-            sections.append((match.group(1).strip(), body[match.end() : end].strip()))
-
     chunks: List[Chunk] = []
-    for heading, section_text in sections:
+    for heading, section_text in markdown_sections(body):
         if len(section_text) < MIN_CHUNK_CHARS:
             continue
         for part_index, part in enumerate(_split_long_section(section_text)):
@@ -167,6 +164,116 @@ def chunk_markdown(raw: str, *, fallback_doc_id: str) -> List[Chunk]:
                     domain=domain,
                     authority=authority,
                     tags=list(tags),
+                )
+            )
+    return chunks
+
+
+def markdown_sections(body: str, heading: re.Pattern = _HEADING) -> List[tuple[str, str]]:
+    """Split a markdown body into `(heading, text)` pairs on `heading` matches."""
+    headings = list(heading.finditer(body))
+    sections: List[tuple[str, str]] = []
+
+    if not headings:
+        sections.append(("Overview", body.strip()))
+    else:
+        preamble = body[: headings[0].start()].strip()
+        # Drop the leading `# Title` line; it duplicates the frontmatter title.
+        preamble = re.sub(r"^#\s+.*$", "", preamble, count=1, flags=re.MULTILINE).strip()
+        if len(preamble) >= MIN_CHUNK_CHARS:
+            sections.append(("Overview", preamble))
+        for index, match in enumerate(headings):
+            end = headings[index + 1].start() if index + 1 < len(headings) else len(body)
+            sections.append((match.group(1).strip(), body[match.end() : end].strip()))
+    return sections
+
+
+# Coarsest first: a passage should break between paragraphs when it can, and
+# only fall back to lines, sentences, then words when a unit is still too long.
+_SEPARATORS = ("\n\n", "\n", ". ", " ")
+
+
+def _atomize(text: str, max_chars: int, level: int = 0) -> List[str]:
+    """Break text into pieces no longer than `max_chars`, separators kept."""
+    if len(text) <= max_chars:
+        return [text]
+    if level >= len(_SEPARATORS):
+        return [text[start : start + max_chars] for start in range(0, len(text), max_chars)]
+
+    separator = _SEPARATORS[level]
+    parts = text.split(separator)
+    pieces: List[str] = []
+    for index, part in enumerate(parts):
+        piece = part + separator if index < len(parts) - 1 else part
+        if piece:
+            pieces.extend(_atomize(piece, max_chars, level + 1))
+    return pieces
+
+
+def split_text(text: str, max_chars: int, overlap: int) -> List[str]:
+    """Pack text into passages of at most `max_chars`, each carrying up to
+    `overlap` characters of the previous one so a fact straddling a boundary is
+    still retrievable from either side."""
+    text = text.strip()
+    if not text:
+        return []
+    if len(text) <= max_chars:
+        return [text]
+
+    passages: List[str] = []
+    buffer = ""
+    for piece in _atomize(text, max_chars):
+        if len(buffer) + len(piece) <= max_chars:
+            buffer += piece
+            continue
+        if buffer.strip():
+            passages.append(buffer.strip())
+        tail = buffer[-overlap:] if overlap else ""
+        # Start the carried-over tail on a word boundary.
+        tail = tail[tail.find(" ") + 1 :] if " " in tail else ""
+        buffer = tail + piece if len(tail) + len(piece) <= max_chars else piece
+    if buffer.strip():
+        passages.append(buffer.strip())
+    return passages
+
+
+def chunk_sections(
+    sections: List[tuple[str, str]],
+    *,
+    doc_id: str,
+    title: str,
+    max_chars: int,
+    overlap: int,
+    domain: str = "uploaded",
+    authority: str = "user",
+    source: str = "upload",
+) -> List[Chunk]:
+    """Chunk pre-split `(label, text)` sections of an uploaded document.
+
+    A section with no label (plain text) is numbered by position, so a citation
+    still points somewhere a reader can find: "Part 4", "Page 12".
+    """
+    chunks: List[Chunk] = []
+    part_number = 0
+    for label, section_text in sections:
+        for index, passage in enumerate(split_text(section_text, max_chars, overlap)):
+            if len(passage) < MIN_UPLOAD_PASSAGE_CHARS:
+                continue
+            part_number += 1
+            if label:
+                heading = label if index == 0 else f"{label} (cont. {index + 1})"
+            else:
+                heading = f"Part {part_number}"
+            chunks.append(
+                Chunk(
+                    id=f"{doc_id}#{len(chunks) + 1}",
+                    doc_id=doc_id,
+                    title=title,
+                    heading=heading,
+                    text=passage,
+                    domain=domain,
+                    authority=authority,
+                    source=source,
                 )
             )
     return chunks

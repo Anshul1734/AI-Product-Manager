@@ -67,6 +67,8 @@ class PipelineState(TypedDict, total=False):
     idea: str
     thread_id: str
     depth: str
+    #: Scopes retrieval over the caller's uploaded documents; None means none.
+    workspace_id: Optional[str]
 
     # --- artifacts: single-writer, so no reducer needed ---
     vision: Optional[ProductVision]
@@ -89,12 +91,15 @@ class PipelineState(TypedDict, total=False):
     refined: Annotated[List[str], operator.add]
 
 
-def initial_state(idea: str, thread_id: str, depth: Depth) -> PipelineState:
+def initial_state(
+    idea: str, thread_id: str, depth: Depth, workspace_id: Optional[str] = None
+) -> PipelineState:
     """Every channel seeded, so nodes can read without KeyError guards."""
     return {
         "idea": idea,
         "thread_id": thread_id,
         "depth": depth.value,
+        "workspace_id": workspace_id,
         "vision": None,
         "prd": None,
         "priorities": None,
@@ -132,6 +137,7 @@ def dedupe_citations(citations: List[Citation]) -> List[Citation]:
             title=item.title,
             heading=item.heading,
             score=item.score,
+            source=item.source,
         )
         for index, item in enumerate(ordered, start=1)
     ]

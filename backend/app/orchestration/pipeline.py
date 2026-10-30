@@ -192,6 +192,7 @@ class ProductPlanPipeline:
         thread_id: Optional[str] = None,
         depth: Depth = Depth.STANDARD,
         on_event: EventSink = None,
+        workspace_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         thread = thread_id or f"thread_{uuid.uuid4().hex[:12]}"
 
@@ -204,7 +205,12 @@ class ProductPlanPipeline:
 
         async with LLMClient() as llm, MCPBridge() as bridge:
             registry = ToolRegistry(
-                ToolContext(retriever=self.retriever, memory=self.memory, thread_id=thread)
+                ToolContext(
+                    retriever=self.retriever,
+                    memory=self.memory,
+                    thread_id=thread,
+                    workspace_id=workspace_id,
+                )
             )
             if bridge.tools:
                 registry.register_many(bridge.tools)
@@ -224,7 +230,7 @@ class ProductPlanPipeline:
             )
 
             final: PipelineState = await graph.ainvoke(
-                initial_state(idea.strip(), thread, depth),
+                initial_state(idea.strip(), thread, depth, workspace_id),
                 config={"configurable": {"thread_id": thread}, "recursion_limit": 25},
             )
 
@@ -358,9 +364,12 @@ class ProductPlanPipeline:
             result = await self.retriever.retrieve(
                 f"product discovery problem framing target users for: {state['idea']}",
                 k=settings.RAG_TOP_K,
+                workspace_id=state.get("workspace_id"),
+                upload_query=state["idea"],
             )
             note = (
                 f"{len(result.chunks)} passages via {', '.join(result.retrievers_used) or 'none'}"
+                + (f", {result.uploaded_count} from your documents" if result.uploaded_count else "")
                 if result.chunks
                 else "knowledge base unavailable"
             )
@@ -655,6 +664,10 @@ class ProductPlanPipeline:
             f"{' '.join(domains)} best practice for {subject}",
             k=settings.RAG_TOP_K,
             domains=domains,
+            workspace_id=state.get("workspace_id"),
+            # The user's own notes are searched with the idea itself: they hold
+            # facts about this product, not "best practice" prose.
+            upload_query=f"{subject} {' '.join(domains)}: {state['idea']}",
         )
         if result.is_empty:
             return state.get("grounding", ""), []
@@ -735,6 +748,8 @@ class ProductPlanPipeline:
                     "corpus_chunks": self.retriever.store.size,
                     "dense": self.retriever.store.has_dense,
                     "sources_cited": len(citations),
+                    "uploaded_sources_cited": sum(1 for c in citations if c.source == "upload"),
+                    "workspace_id": state.get("workspace_id"),
                 },
                 "refined_artifacts": state.get("refined") or [],
                 "agents_run": [step.agent for step in steps],

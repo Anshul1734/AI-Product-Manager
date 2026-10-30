@@ -87,7 +87,7 @@ const KnowledgeExplorer: React.FC = () => {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Ask the same corpus the agents consult…"
+            placeholder="Ask the same corpus the agents consult, including your documents…"
             className="field flex-1"
             aria-label="Knowledge query"
           />
@@ -156,8 +156,14 @@ const KnowledgeExplorer: React.FC = () => {
                 </div>
 
                 <div className="mb-3 flex flex-wrap gap-1.5">
-                  <Badge>{result.domain}</Badge>
-                  <Badge tone="info">{result.authority}</Badge>
+                  {result.source === 'upload' ? (
+                    <Badge tone="success">Your document</Badge>
+                  ) : (
+                    <>
+                      <Badge>{result.domain}</Badge>
+                      <Badge tone="info">{result.authority}</Badge>
+                    </>
+                  )}
                   {result.matched_by.map((by) => (
                     <Badge key={by} tone="accent">
                       {by}

@@ -39,6 +39,12 @@ async def health(response: Response) -> Dict[str, Any]:
             "provider": store.embedding_provider_name,
             "detail": None if store.size else "knowledge index missing; run python -m app.rag.ingest",
         },
+        "uploads": {
+            "ready": settings.uploads_configured,
+            "vector_db": "qdrant",
+            "collection": settings.QDRANT_COLLECTION,
+            "detail": settings.uploads_unavailable_reason(),
+        },
         "memory": {
             "ready": settings.MEMORY_ENABLED,
             **({"stats": get_memory().stats()} if settings.MEMORY_ENABLED else {}),
@@ -70,6 +76,7 @@ async def index() -> Dict[str, Any]:
             "validate": f"{settings.API_V1_STR}/validate",
             "pipeline": f"{settings.API_V1_STR}/pipeline",
             "knowledge_search": f"{settings.API_V1_STR}/knowledge/search",
+            "documents": f"{settings.API_V1_STR}/documents",
             "health": f"{settings.API_V1_STR}/health",
         },
     }

@@ -1,5 +1,6 @@
 """API routers."""
 
+from .documents import router as documents_router
 from .export import router as export_router
 from .health import router as health_router
 from .knowledge import router as knowledge_router
@@ -12,4 +13,5 @@ __all__ = [
     "health_router",
     "knowledge_router",
     "memory_router",
+    "documents_router",
 ]
