@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 
 from .core.config.settings import settings
 from .core.logging.logger import app_logger
+from .core.observability import flush as flush_traces
 from .rag.retriever import get_store
 from .routers import (
     documents_router,
@@ -43,6 +44,7 @@ async def lifespan(_app: FastAPI):
         corpus_chunks=store.size,
         dense_retrieval=store.has_dense,
         uploads=settings.uploads_unavailable_reason() or "ready",
+        tracing=f"langsmith:{settings.LANGSMITH_PROJECT}" if settings.tracing_enabled else "off",
         serverless=settings.is_serverless,
     )
     if not settings.llm_configured:
@@ -50,6 +52,7 @@ async def lifespan(_app: FastAPI):
 
     yield
 
+    flush_traces()
     app_logger.info("Application shutting down")
 
 

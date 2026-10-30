@@ -20,10 +20,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ..core.config.settings import settings
 from ..core.logging.logger import app_logger
+from ..core.observability import traceable, without
 from ..schemas.artifacts import Citation
 from .embeddings import EmbeddingProvider, get_embedding_provider
 from .store import HybridStore, ScoredChunk
@@ -70,6 +71,24 @@ def get_store() -> HybridStore:
     return store
 
 
+def _trace_passages(result: "RetrievalResult") -> List[Dict[str, Any]]:
+    return [
+        {
+            "type": "Document",
+            "page_content": scored.chunk.text,
+            "metadata": {
+                "marker": citation.marker,
+                "source": scored.chunk.source,
+                "title": scored.chunk.title,
+                "heading": scored.chunk.heading,
+                "rrf_score": round(scored.score, 5),
+                "matched_by": scored.retrievers,
+            },
+        }
+        for scored, citation in zip(result.chunks, result.citations)
+    ]
+
+
 class Retriever:
     """Hybrid retriever over the curated corpus and a workspace's uploads."""
 
@@ -101,6 +120,7 @@ class Retriever:
     def available(self) -> bool:
         return settings.RAG_ENABLED and (self.store.size > 0 or settings.uploads_configured)
 
+    @traceable(run_type="retriever", name="retrieve", process_inputs=without(), process_outputs=_trace_passages)
     async def retrieve(
         self,
         query: str,

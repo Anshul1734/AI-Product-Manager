@@ -34,6 +34,7 @@ import httpx
 
 from ..core.config.settings import settings
 from ..core.logging.logger import app_logger
+from ..core.observability import annotate, traceable
 from .chunking import Chunk, chunk_sections
 from .embeddings import EmbeddingProvider, get_embedding_provider
 from .parsers import UnsupportedDocument, extract_sections
@@ -241,6 +242,15 @@ class UploadedDocuments:
 
     # -------------------------------------------------------------- writes
 
+    @traceable(
+        run_type="chain",
+        name="upload_document",
+        process_inputs=lambda inputs: {
+            "workspace_id": inputs.get("workspace_id"),
+            "filename": inputs.get("filename"),
+            "size_bytes": len(inputs.get("data") or b""),
+        },
+    )
     async def add(self, workspace_id: str, filename: str, data: bytes) -> Dict[str, Any]:
         self.require_configured()
         workspace_id = validate_workspace(workspace_id)
@@ -275,6 +285,7 @@ class UploadedDocuments:
 
         doc_id = f"up_{uuid.uuid4().hex[:12]}"
         title = PurePath(filename).stem.strip() or filename
+        annotate(doc_id=doc_id, sections=len(sections))
         chunks = chunk_sections(
             sections,
             doc_id=doc_id,

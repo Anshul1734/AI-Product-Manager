@@ -137,7 +137,12 @@ so the backlog agent can reach a real Linear or Jira instance.
 
 **Observability.** Runs stream Server-Sent Events, so the UI shows which agent
 is working, which tool it reached for, and where a schema repair was needed —
-along with per-agent model, duration, and token cost.
+along with per-agent model, duration, and token cost. For the full picture,
+runs trace to **LangSmith** ([`app/core/observability.py`](backend/app/core/observability.py)):
+LangGraph traces the graph nodes by itself, but the LLM, tool, retrieval and
+embedding calls here go through the project's own `httpx` clients, which
+LangSmith cannot see into — so each is wrapped with `@traceable`. See
+[Observability with LangSmith](#observability-with-langsmith).
 
 ---
 
@@ -251,6 +256,51 @@ curl -X POST http://localhost:8001/api/v1/generate -H "Content-Type: application
 
 ---
 
+## Observability with LangSmith
+
+Every run becomes one trace tree:
+
+```
+product_plan                        graph run — tagged depth:quick|standard|deep (+ uploads)
+  retrieve                          shared grounding
+    retrieve [retriever]            passages, with source (corpus / upload), score, which retriever matched
+      embed [embedding]             provider, model, count, dimensions
+  planner                           graph node
+    retrieve [retriever]            per-agent pre-grounding
+    groq.chat · planner research 1  [llm] full prompt, response, tool calls, tokens, model actually used
+    search_pm_knowledge [tool]      arguments and result
+    groq.chat · planner emit        [llm] the JSON answer; "repair N" if a schema retry was needed
+  analyst · prioritizer · architect · tickets · critic …
+```
+
+Uploads trace as `upload_document` (filename, size, passages — never the raw
+file). LLM spans record `ls_model_name`, so a budget fallback to another model
+shows up, and `thread_id` metadata groups a thread's runs in LangSmith's
+Threads view.
+
+**Enable it** — in `backend/.env` (or the service's environment):
+
+```
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=lsv2_...            # smith.langchain.com → Settings → API Keys
+LANGSMITH_PROJECT=ai-product-manager-dev
+# LANGSMITH_ENDPOINT=https://eu.api.smith.langchain.com   # EU accounts only
+```
+
+Restart the backend, generate a plan, and open **Projects →
+ai-product-manager-dev** in LangSmith. `GET /api/v1/health` reports
+`components.tracing`. Tracing is off unless both the flag and a key are set, and
+the `@traceable` wrappers are pass-throughs when it is off.
+
+The app reads `.env` through pydantic-settings, which does not export to the
+process environment that LangSmith reads; `Settings.export_tracing_env()`
+bridges the two at import.
+
+**Privacy:** traces contain prompts and retrieved passages, including text from
+users' uploaded documents. Enable it in production deliberately.
+
+---
+
 ## Rate limits shape the design
 
 Groq's free tier allows **8,000 tokens per minute *and* 200,000 tokens per day,
@@ -319,6 +369,7 @@ tier:
 | `QDRANT_URL` | document upload | Qdrant Cloud cluster URL, e.g. `https://xxxx.cloud.qdrant.io:6333` |
 | `QDRANT_API_KEY` | document upload | Qdrant Cloud → cluster → API Keys |
 | `QDRANT_COLLECTION` | document upload | set by the blueprint to `user_documents` |
+| `LANGSMITH_API_KEY` | tracing (optional; off without it) | smith.langchain.com → Settings → API Keys |
 | `CORS_ORIGINS` | the browser calling the API | your frontend's origin |
 
 **Uploads need a hosted vector DB.** Render's free disk is wiped on every
@@ -352,6 +403,7 @@ which limits upload size if the API runs there.
 backend/
   asgi.py                  Single ASGI entrypoint for every target
   app/
+    core/observability.py  LangSmith tracing: @traceable LLM/tool/retriever/embedding spans
     agents/                Six agents + the two-phase tool loop, digests, JSON repair
     orchestration/         LangGraph StateGraph: fan-out/fan-in, conditional edges, checkpointing
     llm/                   Groq client, typed errors, per-model token pacing

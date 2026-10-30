@@ -18,6 +18,7 @@ import httpx
 
 from ..core.config.settings import settings
 from ..core.logging.logger import app_logger
+from ..core.observability import annotate, traceable
 from .errors import (
     LLMBadRequestError,
     LLMNotConfiguredError,
@@ -83,6 +84,20 @@ class LLMResponse:
         return message
 
 
+def _trace_output(response: "LLMResponse") -> Dict[str, Any]:
+    """OpenAI-shaped output plus `usage_metadata`, which is what LangSmith
+    renders as a chat turn and counts as tokens."""
+    return {
+        "choices": [{"message": response.raw_message, "finish_reason": response.finish_reason}],
+        "model": response.model,
+        "usage_metadata": {
+            "input_tokens": response.usage.prompt_tokens,
+            "output_tokens": response.usage.completion_tokens,
+            "total_tokens": response.usage.total_tokens,
+        },
+    }
+
+
 class LLMClient:
     """Thin, retrying wrapper around Groq's chat-completions endpoint."""
 
@@ -114,6 +129,16 @@ class LLMClient:
     def configured(self) -> bool:
         return bool(self._api_key) and not self._api_key.startswith("gsk_your")
 
+    @traceable(
+        run_type="llm",
+        name="groq.chat",
+        metadata={"ls_provider": "groq"},
+        # Snapshot the list: LangSmith serializes inputs later, on a background
+        # thread, and agents append to the same list after each call -- without
+        # a copy a trace shows messages the model never saw.
+        process_inputs=lambda inputs: {**inputs, "messages": list(inputs.get("messages") or [])},
+        process_outputs=_trace_output,
+    )
     async def complete(
         self,
         messages: Sequence[Dict[str, Any]],
@@ -172,7 +197,14 @@ class LLMClient:
                     payload.pop("response_format", None)
                     want_json = False
             try:
-                return await self._complete_with_retries(payload, candidate, want_json)
+                response = await self._complete_with_retries(payload, candidate, want_json)
+                annotate(
+                    ls_model_name=response.model or candidate,
+                    requested_model=target_model,
+                    fell_back=candidate != target_model,
+                    json_mode=want_json,
+                )
+                return response
             except LLMRateLimitError as exc:
                 last_error = exc
                 continue

@@ -14,6 +14,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from ..core.config.settings import settings
 from ..core.logging.logger import app_logger
+from ..core.observability import traceable, without
 from .base import Tool, ToolContext, ToolResult
 from .knowledge import search_pm_knowledge
 from .memory import recall_similar_plans
@@ -58,6 +59,18 @@ class ToolRegistry:
         return [tool.schema() for tool in selected]
 
     async def execute(self, name: str, arguments: Dict[str, Any]) -> ToolResult:
+        return await self._execute(name, arguments, langsmith_extra={"name": name})
+
+    @traceable(
+        run_type="tool",
+        process_inputs=without("name"),
+        process_outputs=lambda result: {
+            "ok": result.ok,
+            "content": result.content,
+            "citations": [citation.marker + " " + citation.title for citation in result.citations],
+        },
+    )
+    async def _execute(self, name: str, arguments: Dict[str, Any]) -> ToolResult:
         tool = self._tools.get(name)
         if tool is None:
             return ToolResult.error(

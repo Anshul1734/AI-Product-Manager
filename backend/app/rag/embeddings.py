@@ -15,6 +15,7 @@ import httpx
 
 from ..core.config.settings import settings
 from ..core.logging.logger import app_logger
+from ..core.observability import annotate, traceable
 
 
 def normalize(vector: Sequence[float]) -> List[float]:
@@ -73,9 +74,24 @@ class _HttpEmbeddings:
     def _payload(self, batch: Sequence[str], is_query: bool) -> dict:
         raise NotImplementedError
 
+    @traceable(
+        run_type="embedding",
+        name="embed",
+        process_inputs=lambda inputs: {
+            "is_query": inputs.get("is_query", False),
+            "count": len(inputs["texts"]),
+            # A document batch can be hundreds of passages; a sample is enough.
+            "texts": list(inputs["texts"][:5]),
+        },
+        process_outputs=lambda vectors: {
+            "count": len(vectors),
+            "dimensions": len(vectors[0]) if vectors else 0,
+        },
+    )
     async def embed(self, texts: Sequence[str], *, is_query: bool = False) -> List[List[float]]:
         if not texts or not self.enabled:
             return []
+        annotate(provider=self.name, model=self._model)
 
         vectors: List[List[float]] = []
         batch_size = max(1, settings.EMBEDDING_BATCH_SIZE)

@@ -16,6 +16,10 @@ httpx==0.28.1
 # langgraph-checkpoint.
 langgraph==1.2.11
 
+# Tracing to LangSmith (off unless LANGSMITH_TRACING and a key are set). Already
+# pulled in by langgraph; pinned because app/core/observability.py imports it.
+langsmith==0.12.2
+
 # Document upload: multipart form parsing, and text extraction from PDF and
 # Word files (both imported lazily, only while an upload is processed).
 python-multipart==0.0.32

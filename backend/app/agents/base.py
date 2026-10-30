@@ -148,6 +148,7 @@ class BaseAgent(ABC, Generic[T]):
                         tools=schemas,
                         temperature=self.temperature,
                         max_tokens=700,
+                        langsmith_extra={"name": f"groq.chat · {self.name} research {round_index + 1}"},
                     )
                 except LLMBadRequestError as exc:
                     # Groq validates tool arguments server-side, so a malformed
@@ -237,6 +238,9 @@ class BaseAgent(ABC, Generic[T]):
                     temperature=self.temperature if attempt == 0 else min(0.2, self.temperature),
                     max_tokens=self.max_tokens,
                     json_mode=True,
+                    langsmith_extra={
+                        "name": f"groq.chat · {self.name} " + ("emit" if attempt == 0 else f"repair {attempt}")
+                    },
                 )
                 usage = usage + response.usage
 

@@ -45,6 +45,11 @@ async def health(response: Response) -> Dict[str, Any]:
             "collection": settings.QDRANT_COLLECTION,
             "detail": settings.uploads_unavailable_reason(),
         },
+        "tracing": {
+            "enabled": settings.tracing_enabled,
+            "provider": "langsmith",
+            "project": settings.LANGSMITH_PROJECT if settings.tracing_enabled else None,
+        },
         "memory": {
             "ready": settings.MEMORY_ENABLED,
             **({"stats": get_memory().stats()} if settings.MEMORY_ENABLED else {}),

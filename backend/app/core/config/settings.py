@@ -123,6 +123,15 @@ class Settings(BaseSettings):
     MCP_SERVERS: str = "[]"
     MCP_TOOL_TIMEOUT: float = 20.0
 
+    # Observability (LangSmith). Off unless LANGSMITH_TRACING is true AND a key
+    # is set. Traces carry prompts and retrieved passages -- including text
+    # from users' uploaded documents -- so enable it deliberately in production.
+    LANGSMITH_TRACING: bool = False
+    LANGSMITH_API_KEY: Optional[str] = None
+    LANGSMITH_PROJECT: str = "ai-product-manager"
+    # Only for a non-default region, e.g. https://eu.api.smith.langchain.com
+    LANGSMITH_ENDPOINT: Optional[str] = None
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"
@@ -181,6 +190,26 @@ class Settings(BaseSettings):
     def uploads_configured(self) -> bool:
         return self.uploads_unavailable_reason() is None
 
+    @property
+    def tracing_enabled(self) -> bool:
+        return self.LANGSMITH_TRACING and bool((self.LANGSMITH_API_KEY or "").strip())
+
+    def export_tracing_env(self) -> None:
+        """Publish the LangSmith settings to the process environment.
+
+        LangSmith (and LangGraph's built-in tracing) read only `os.environ`,
+        while these settings may come from backend/.env, which nothing else
+        exports. Runs at import, before any LangSmith code reads the variables:
+        it caches what it reads.
+        """
+        os.environ["LANGSMITH_TRACING"] = "true" if self.tracing_enabled else "false"
+        if not self.tracing_enabled:
+            return
+        os.environ["LANGSMITH_API_KEY"] = self.LANGSMITH_API_KEY.strip()
+        os.environ["LANGSMITH_PROJECT"] = self.LANGSMITH_PROJECT
+        if self.LANGSMITH_ENDPOINT:
+            os.environ["LANGSMITH_ENDPOINT"] = self.LANGSMITH_ENDPOINT.strip()
+
     def resolved_embedding_provider(self) -> str:
         """Resolve "auto" against whichever provider keys are actually present."""
         if self.EMBEDDING_PROVIDER != "auto":
@@ -193,3 +222,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+settings.export_tracing_env()

@@ -50,6 +50,15 @@ services:
         sync: false # set in the Render dashboard; never commit a key
       - key: QDRANT_COLLECTION
         value: user_documents
+      # LangSmith tracing. Stays off until LANGSMITH_API_KEY is set, so this is
+      # inert by default. Traces include prompts and retrieved passages
+      # (uploaded-document text too); set the key only if that is acceptable.
+      - key: LANGSMITH_TRACING
+        value: "true"
+      - key: LANGSMITH_API_KEY
+        sync: false # set in the Render dashboard; never commit a key
+      - key: LANGSMITH_PROJECT
+        value: ai-product-manager
       - key: LOG_FORMAT
         value: json
       - key: LOG_LEVEL

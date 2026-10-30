@@ -231,7 +231,20 @@ class ProductPlanPipeline:
 
             final: PipelineState = await graph.ainvoke(
                 initial_state(idea.strip(), thread, depth, workspace_id),
-                config={"configurable": {"thread_id": thread}, "recursion_limit": 25},
+                config={
+                    "configurable": {"thread_id": thread},
+                    "recursion_limit": 25,
+                    # Names and labels the run in LangSmith; `thread_id` metadata
+                    # is also what groups a thread's runs in its Threads view.
+                    "run_name": "product_plan",
+                    "tags": [f"depth:{depth.value}", *(["uploads"] if workspace_id else [])],
+                    "metadata": {
+                        "thread_id": thread,
+                        "depth": depth.value,
+                        "workspace_id": workspace_id,
+                        "idea": idea.strip()[:300],
+                    },
+                },
             )
 
         elapsed = (datetime.now(timezone.utc) - started).total_seconds()
